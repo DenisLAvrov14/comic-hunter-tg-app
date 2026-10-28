@@ -8,6 +8,7 @@ import {
   listBusySlotsInRange,
   listComedianGigsInRange,
   listEventParticipations,
+  listStaff,
   type ComedianRow,
   type DbOrTx,
   type Event,
@@ -145,6 +146,9 @@ export async function loadEventDetails(
     lineupVersion: row.event.lineupVersion,
     viewer: {
       isOrganizer,
+      staffPermissions: resource.staff
+        ? (resource.staff.permissions as Record<string, boolean>)
+        : null,
       canApply: can({ userId }, 'event.apply', resource),
       participation: resource.participationRow
         ? toMyParticipation(resource.participationRow)
@@ -278,6 +282,9 @@ export async function loadLineup(
         isUrgent: p.isUrgent,
         message: p.message,
         counterProposal: p.counterProposal,
+        replacementFor: p.replacementFor,
+        dayConfirmation: p.dayConfirmation,
+        attendance: p.attendance,
         comedian: brief,
         stageStart: w ? w.start.toISOString() : null,
         conflicts,
@@ -287,8 +294,10 @@ export async function loadLineup(
 
   const by = (...statuses: Participation['status'][]) =>
     items.filter((i) => statuses.includes(i.status));
+  const staff = await listStaff(db, event.id);
   return {
     version: event.lineupVersion,
+    staff: staff.map((m) => ({ ...m, username: m.username ?? null })),
     accepted: by('accepted').sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9)),
     reserve: by('reserve'),
     applications: by('pending'),

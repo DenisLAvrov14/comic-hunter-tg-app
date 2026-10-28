@@ -3,6 +3,7 @@ import { createDb, runMigrations, syncCities, type Db } from '@standup/db';
 import { buildApp } from './app';
 import { signInitData } from './auth/initData';
 import type { Config } from './config';
+import { MemorySender } from './messaging';
 import { MemoryStorage } from './storage';
 
 export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -53,14 +54,21 @@ export interface TestClient {
   ) => Promise<Awaited<ReturnType<App['inject']>>>;
 }
 
-export async function setupTestApp(): Promise<{ app: App; db: Db; close: () => Promise<void> }> {
+export async function setupTestApp(): Promise<{
+  app: App;
+  db: Db;
+  sender: MemorySender;
+  close: () => Promise<void>;
+}> {
   const { db, close } = createDb(TEST_DATABASE_URL ?? 'postgres://unused');
   await runMigrations(db);
   await syncCities(db);
-  const app = await buildApp({ config: testConfig, db, storage: new MemoryStorage() });
+  const sender = new MemorySender();
+  const app = await buildApp({ config: testConfig, db, storage: new MemoryStorage(), sender });
   return {
     app,
     db,
+    sender,
     close: async () => {
       await app.close();
       await close();

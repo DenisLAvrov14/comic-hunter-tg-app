@@ -107,6 +107,7 @@ export const ru = {
       open: 'Ищут комиков',
       inbox: 'Входящие',
       myEvents: 'Мои события',
+      hosting: 'Я веду',
       profile: 'Профиль',
     },
     formats: { open_mic: 'Open mic', showcase: 'Showcase', concert: 'Концерт', other: 'Другое' },
@@ -166,6 +167,7 @@ export const ru = {
       counterPlaceholder: 'Например: могу после 21:00',
       send: 'Отправить',
       waitingOrganizer: 'Ждём ответа организатора',
+      urgentReplacement: 'Срочно нужна замена — первый согласившийся займёт место',
     },
     conflicts: {
       title: 'Пересекается по времени',
@@ -233,6 +235,46 @@ export const ru = {
       counterProposal: 'Предлагает',
       empty: 'Пусто',
     },
+    lineup: {
+      dragHint: 'Перетащите, чтобы поменять порядок',
+      versionConflict: 'Состав изменил кто-то другой — показываем актуальный порядок.',
+      selected: (n: number) => `Выбрано: ${n}`,
+      acceptSelected: 'Принять выбранных',
+      reserveSelected: 'В резерв',
+      rejectSelected: 'Отклонить',
+      present: 'Пришёл',
+      absent: 'Не пришёл',
+      confirmed: 'подтвердил',
+      declinedDay: 'не сможет',
+      replace: 'Замена',
+      replaceTitle: (name: string) => `Замена для: ${name}`,
+      replaceHint:
+        'Резервисты без пересечений — сверху. «Позвать» отправит срочное приглашение; первый согласившийся займёт место.',
+      call: (n: number) => (n > 0 ? `Позвать (${n})` : 'Выберите резервистов'),
+      calling: 'позван на замену',
+      noReserve: 'Резерв пуст.',
+      poster: 'Скопировать для афиши',
+      broadcast: 'Рассылка составу',
+      broadcastPlaceholder: 'Текст сообщения всем, кто в составе',
+      broadcastSend: 'Отправить',
+      broadcastResult: (sent: number, failed: number) =>
+        `Отправлено: ${sent}${failed ? `, не доставлено: ${failed} (не запускали бота)` : ''}`,
+      hosts: 'Ведущие',
+      addHost: 'Назначить ведущего',
+      hostSearch: 'Имя ведущего',
+      noHosts: 'Нет пользователей с ролью ведущего.',
+      removeHost: 'Снять',
+      permissions: {
+        can_reorder: 'Менять порядок',
+        can_mark_attendance: 'Отмечать присутствие',
+        can_call_reserve: 'Звать резерв',
+        can_notify_lineup: 'Рассылка составу',
+      },
+    },
+    hosting: {
+      title: 'Я веду',
+      empty: 'Вас пока не назначили ведущим.',
+    },
     invite: {
       title: 'Пригласить комиков',
       search: 'Имя',
@@ -253,6 +295,23 @@ export const ru = {
       submit: 'Войти',
     },
     notInTelegram: 'Откройте приложение из Telegram.',
+  },
+  // Текст «Скопировать для афиши» (SPEC §6.3).
+  poster: {
+    title: (title: string) => `🎤 ${title}`,
+    when: (when: string) => `📅 ${when}`,
+    venue: (name: string, address: string) => `📍 ${name}, ${address}`,
+    host: (names: string) => `🎙 Ведущий: ${names}`,
+    lineup: 'Состав:',
+    item: (n: number, name: string, link: string | null) =>
+      `${n}. ${name}${link ? ` — ${link}` : ''}`,
+    conditions: 'Условия:',
+  },
+  messages: {
+    broadcast: (title: string, text: string) => `📣 ${title}\n\n${text}`,
+    replacement: (title: string, when: string, venue: string) =>
+      `🔥 Срочно нужна замена!\n\n${title}\n${when}, ${venue}\n\nОткройте приложение, чтобы согласиться.`,
+    openEvent: 'Открыть',
   },
   errors: {
     VALIDATION: 'Некорректные данные',

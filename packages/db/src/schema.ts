@@ -230,6 +230,8 @@ export const participations = pgTable(
     autoAccepted: boolean('auto_accepted').notNull().default(false),
     // Приглашение на замену выбывшего (этап 5): первый принявший занимает позицию.
     isUrgent: boolean('is_urgent').notNull().default(false),
+    // Кого заменяет срочно позванный резервист (его позицию он займёт).
+    replacementFor: uuid('replacement_for'),
     // Сопроводительный текст заявки или приглашения.
     message: text('message'),
     counterProposal: text('counter_proposal'),

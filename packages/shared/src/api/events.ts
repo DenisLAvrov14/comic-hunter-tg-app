@@ -132,6 +132,8 @@ export const EventDetails = EventSummary.extend({
   /** Права текущего пользователя на событии. */
   viewer: z.object({
     isOrganizer: z.boolean(),
+    /** Флаги ведущего, если пользователь в штате события. */
+    staffPermissions: z.record(z.boolean()).nullable(),
     canApply: z.boolean(),
     participation: MyParticipation.nullable(),
   }),
@@ -204,6 +206,10 @@ export const LineupItem = z.object({
   isUrgent: z.boolean(),
   message: z.string().nullable(),
   counterProposal: z.string().nullable(),
+  /** Срочный вызов на замену: кого заменяет. */
+  replacementFor: z.string().uuid().nullable(),
+  dayConfirmation: z.enum(['none', 'confirmed', 'declined']),
+  attendance: z.enum(['unknown', 'present', 'absent']),
   comedian: ComedianBrief,
   /** Примерное время выхода (для accepted с позицией). */
   stageStart: z.string().nullable(),
@@ -212,8 +218,17 @@ export const LineupItem = z.object({
 });
 export type LineupItem = z.infer<typeof LineupItem>;
 
+export const StaffMember = z.object({
+  userId: z.string().uuid(),
+  name: z.string(),
+  username: z.string().nullable(),
+  permissions: z.record(z.boolean()),
+});
+export type StaffMember = z.infer<typeof StaffMember>;
+
 export const Lineup = z.object({
   version: z.number().int(),
+  staff: z.array(StaffMember),
   accepted: z.array(LineupItem),
   reserve: z.array(LineupItem),
   applications: z.array(LineupItem),
@@ -258,3 +273,53 @@ export const ComedianCard = z.object({
   contact: z.string(),
 });
 export type ComedianCard = z.infer<typeof ComedianCard>;
+
+export const LineupOrderRequest = z.object({
+  /** Все accepted-участия в новом порядке. */
+  order: z.array(z.string().uuid()).min(1).max(100),
+  version: z.number().int().nonnegative(),
+});
+export type LineupOrderRequest = z.infer<typeof LineupOrderRequest>;
+
+export const AttendanceRequest = z.object({ value: z.enum(['unknown', 'present', 'absent']) });
+export type AttendanceRequest = z.infer<typeof AttendanceRequest>;
+
+export const ReplacementRequest = z.object({
+  /** Выбывший участник состава. */
+  participationId: z.string().uuid(),
+  /** Резервисты, которых зовём (их participation id). */
+  reserveIds: z.array(z.string().uuid()).min(1).max(20),
+});
+export type ReplacementRequest = z.infer<typeof ReplacementRequest>;
+
+export const BroadcastRequest = z.object({ text: z.string().trim().min(1).max(2000) });
+export type BroadcastRequest = z.infer<typeof BroadcastRequest>;
+
+export const BroadcastResponse = z.object({ sent: z.number().int(), failed: z.number().int() });
+export type BroadcastResponse = z.infer<typeof BroadcastResponse>;
+
+export const PosterText = z.object({ text: z.string() });
+export type PosterText = z.infer<typeof PosterText>;
+
+export const hostPermissionKeys = [
+  'can_reorder',
+  'can_mark_attendance',
+  'can_call_reserve',
+  'can_notify_lineup',
+] as const;
+export const StaffPermissionsRequest = z.object({
+  permissions: z.object(
+    Object.fromEntries(hostPermissionKeys.map((k) => [k, z.boolean()])) as Record<
+      (typeof hostPermissionKeys)[number],
+      z.ZodBoolean
+    >,
+  ),
+});
+export type StaffPermissionsRequest = z.infer<typeof StaffPermissionsRequest>;
+
+export const HostCandidate = z.object({
+  userId: z.string().uuid(),
+  name: z.string(),
+  username: z.string().nullable(),
+});
+export type HostCandidate = z.infer<typeof HostCandidate>;

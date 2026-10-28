@@ -283,7 +283,7 @@ function InvitationCard({ item }: { item: InboxItem }) {
   return (
     <section className="card">
       <EventCard e={item.event} to={`/events/${item.event.id}`} />
-      {p.isUrgent && <span className="badge">{t.events.urgent}</span>}
+      {p.isUrgent && <span className="badge urgent">{t.inbox.urgentReplacement}</span>}
       {p.status === 'counter_proposed' ? (
         <p className="hint">
           {t.inbox.waitingOrganizer}: «{p.counterProposal}»
@@ -300,9 +300,11 @@ function InvitationCard({ item }: { item: InboxItem }) {
           >
             {t.inbox.decline}
           </button>
-          <button className="secondary" disabled={disabled} onClick={() => setCounter('')}>
-            {t.inbox.counter}
-          </button>
+          {p.status === 'invited' && (
+            <button className="secondary" disabled={disabled} onClick={() => setCounter('')}>
+              {t.inbox.counter}
+            </button>
+          )}
         </div>
       ) : (
         <div className="stack">

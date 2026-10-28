@@ -8,6 +8,7 @@ import {
   requestWriteAccess,
   retrieveLaunchParams,
   retrieveRawInitData,
+  swipeBehavior,
   themeParams,
   viewport,
 } from '@telegram-apps/sdk-react';
@@ -31,6 +32,7 @@ export function initTelegram(): TelegramEnv {
   themeParams.bindCssVars.ifAvailable();
   miniApp.mountSync.ifAvailable();
   backButton.mount.ifAvailable();
+  swipeBehavior.mount.ifAvailable();
   if (mainButton.mount.isAvailable()) mainButton.mount();
   void viewport.mount
     .ifAvailable()?.[1]
@@ -48,6 +50,13 @@ export function initTelegram(): TelegramEnv {
 
 export function isInTelegram() {
   return inTelegram;
+}
+
+/** На экранах с drag-and-drop вертикальный свайп не должен закрывать Mini App. */
+export function setVerticalSwipes(enabled: boolean) {
+  if (!inTelegram) return;
+  if (enabled) swipeBehavior.enableVertical.ifAvailable();
+  else swipeBehavior.disableVertical.ifAvailable();
 }
 
 export function haptic(kind: 'light' | 'success' | 'error' = 'light') {

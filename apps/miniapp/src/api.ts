@@ -14,12 +14,14 @@ import type {
   EventInput,
   EventPatch,
   EventSummary,
+  HostCandidate,
   Inbox,
   InvitationsResponse,
   Lineup,
   Me,
   MyParticipation,
   ParticipationActionRequest,
+  StaffPermissionsRequest,
   OrganizerProfileInput,
   PatchMeRequest,
   Photo,
@@ -117,6 +119,22 @@ export const api = {
   comedians: (q: ComediansQuery) =>
     request<Array<ComedianBrief & { cityId: number }>>('GET', `/comedians?${query(q)}`),
   comedian: (id: string) => request<ComedianCard>('GET', `/comedians/${id}`),
+
+  reorder: (id: string, order: string[], version: number) =>
+    request<Lineup>('PATCH', `/events/${id}/lineup/order`, { order, version }),
+  attendance: (participationId: string, value: 'unknown' | 'present' | 'absent') =>
+    request<MyParticipation>('POST', `/participations/${participationId}/attendance`, { value }),
+  replacement: (id: string, participationId: string, reserveIds: string[]) =>
+    request<Lineup>('POST', `/events/${id}/replacement`, { participationId, reserveIds }),
+  broadcast: (id: string, text: string) =>
+    request<{ sent: number; failed: number }>('POST', `/events/${id}/broadcast`, { text }),
+  posterText: (id: string) => request<{ text: string }>('GET', `/events/${id}/poster-text`),
+  hosts: (q: string) => request<HostCandidate[]>('GET', `/hosts?${query({ q })}`),
+  putStaff: (id: string, userId: string, permissions: StaffPermissionsRequest['permissions']) =>
+    request<Lineup>('PUT', `/events/${id}/staff/${userId}`, { permissions }),
+  deleteStaff: (id: string, userId: string) =>
+    request<Lineup>('DELETE', `/events/${id}/staff/${userId}`),
+  hosting: () => request<EventSummary[]>('GET', '/me/hosting'),
 };
 
 function query(params: object): string {

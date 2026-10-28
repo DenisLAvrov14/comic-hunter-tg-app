@@ -11,15 +11,18 @@ import { authRoutes } from './routes/auth';
 import { meRoutes } from './routes/me';
 import { eventRoutes } from './routes/events';
 import { referenceRoutes } from './routes/reference';
+import type { MessageSender } from './messaging';
+import { lineupRoutes } from './routes/lineup';
 import type { FileStorage } from './storage';
 
 export interface AppDeps {
   config: Config;
   db: Db;
   storage: FileStorage;
+  sender: MessageSender;
 }
 
-export async function buildApp({ config, db, storage }: AppDeps) {
+export async function buildApp({ config, db, storage, sender }: AppDeps) {
   const app = Fastify({
     logger:
       config.env === 'test'
@@ -47,6 +50,7 @@ export async function buildApp({ config, db, storage }: AppDeps) {
       await api.register(meRoutes, { db, storage });
       await api.register(referenceRoutes, { db });
       await api.register(eventRoutes, { db, storage });
+      await api.register(lineupRoutes, { config, db, storage, sender });
     },
     { prefix: '/api/v1' },
   );

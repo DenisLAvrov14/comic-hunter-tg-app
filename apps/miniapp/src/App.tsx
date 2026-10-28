@@ -4,12 +4,8 @@ import { ru } from '@standup/shared';
 import { useAuth, useMe } from './auth';
 import { EventScreen, InboxScreen, OpenEventsScreen } from './screens/Comedian';
 import { Onboarding } from './screens/Onboarding';
-import {
-  EventFormScreen,
-  InviteScreen,
-  ManageEventScreen,
-  MyEventsScreen,
-} from './screens/Organizer';
+import { HostingScreen, LineupScreen } from './screens/Lineup';
+import { EventFormScreen, InviteScreen, MyEventsScreen } from './screens/Organizer';
 import { ComedianProfileScreen, OrganizerProfileScreen, RolesScreen } from './screens/Profiles';
 import { VenuesScreen } from './screens/Venues';
 
@@ -37,6 +33,7 @@ function Home() {
             <Link to="/venues">{t.menu.venues}</Link>
           </>
         )}
+        {me.roles.includes('host') && <Link to="/hosting">{t.nav.hosting}</Link>}
         <Link to="/roles">{t.menu.roles}</Link>
       </nav>
     </div>
@@ -86,7 +83,8 @@ function AuthenticatedRoutes() {
       <Route path="/events/new" element={<EventFormScreen />} />
       <Route path="/events/:id" element={<EventScreen />} />
       <Route path="/events/:id/edit" element={<EventFormScreen />} />
-      <Route path="/events/:id/manage" element={<ManageEventScreen />} />
+      <Route path="/events/:id/manage" element={<LineupScreen />} />
+      <Route path="/hosting" element={<HostingScreen />} />
       <Route path="/events/:id/invite" element={<InviteScreen />} />
       <Route path="*" element={<Home />} />
     </Routes>

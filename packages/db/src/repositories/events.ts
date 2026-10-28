@@ -9,6 +9,7 @@ import {
   organizerProfiles,
   participationEvents,
   participations,
+  userRoles,
   users,
   venues,
   type BusySlot,
@@ -20,6 +21,9 @@ import {
 
 /** Date в сыром sql-шаблоне drizzle не сериализует — передаём ISO-строку с приведением. */
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`;
+
+/** Подстрока для ILIKE с экранированными спецсимволами. */
+const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** Транзакция или обычное подключение — у обоих одинаковый интерфейс запросов. */
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -372,7 +376,7 @@ export function searchComedians(
   db: DbOrTx,
   q: { text?: string; cityId?: number; category?: ComedianRow['category']; limit?: number },
 ): Promise<ComedianRow[]> {
-  const pattern = q.text ? `%${q.text.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const pattern = q.text ? likePattern(q.text) : null;
   return db
     .select(comedianColumns)
     .from(comedianProfiles)
@@ -411,4 +415,70 @@ export async function countPastGigs(db: DbOrTx, comedianId: string, now: Date): 
       ),
     );
   return row?.n ?? 0;
+}
+
+export async function upsertStaff(
+  db: DbOrTx,
+  data: { eventId: string; userId: string; permissions: Record<string, boolean> },
+) {
+  const [row] = await db
+    .insert(eventStaff)
+    .values({ ...data, role: 'host' })
+    .onConflictDoUpdate({
+      target: [eventStaff.eventId, eventStaff.userId],
+      set: { permissions: data.permissions },
+    })
+    .returning();
+  return row!;
+}
+
+export async function deleteStaff(db: DbOrTx, eventId: string, userId: string) {
+  await db
+    .delete(eventStaff)
+    .where(and(eq(eventStaff.eventId, eventId), eq(eventStaff.userId, userId)));
+}
+
+/** Штат события с именами: сценическое/организаторское имя или имя из Telegram. */
+export function listStaff(db: DbOrTx, eventId: string) {
+  return db
+    .select({
+      userId: eventStaff.userId,
+      permissions: eventStaff.permissions,
+      name: sql<string>`coalesce(${comedianProfiles.stageName}, ${organizerProfiles.displayName}, ${users.firstName})`,
+      username: users.telegramUsername,
+    })
+    .from(eventStaff)
+    .innerJoin(users, eq(users.id, eventStaff.userId))
+    .leftJoin(comedianProfiles, eq(comedianProfiles.userId, eventStaff.userId))
+    .leftJoin(organizerProfiles, eq(organizerProfiles.userId, eventStaff.userId))
+    .where(eq(eventStaff.eventId, eventId))
+    .orderBy(asc(eventStaff.createdAt));
+}
+
+/** Пользователи с ролью ведущего — для назначения на событие. */
+export function searchHosts(db: DbOrTx, text: string | undefined, limit = 30) {
+  const pattern = text ? likePattern(text) : null;
+  const name = sql<string>`coalesce(${comedianProfiles.stageName}, ${organizerProfiles.displayName}, ${users.firstName})`;
+  return db
+    .select({ userId: users.id, name, username: users.telegramUsername })
+    .from(users)
+    .innerJoin(userRoles, and(eq(userRoles.userId, users.id), eq(userRoles.role, 'host')))
+    .leftJoin(comedianProfiles, eq(comedianProfiles.userId, users.id))
+    .leftJoin(organizerProfiles, eq(organizerProfiles.userId, users.id))
+    .where(
+      pattern
+        ? sql`(${name} ilike ${pattern} or ${users.telegramUsername} ilike ${pattern})`
+        : undefined,
+    )
+    .orderBy(asc(name))
+    .limit(limit);
+}
+
+/** События, где пользователь — ведущий. */
+export function listHostedEvents(db: DbOrTx, userId: string, now: Date): Promise<EventWithRefs[]> {
+  return eventWithRefsQuery(db)
+    .innerJoin(eventStaff, and(eq(eventStaff.eventId, events.id), eq(eventStaff.userId, userId)))
+    .where(and(ne(events.status, 'draft'), sql`${events.windowEndsAt} >= ${ts(now)}`))
+    .orderBy(asc(events.startsAt))
+    .limit(100);
 }

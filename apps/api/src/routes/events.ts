@@ -401,15 +401,16 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
       participation: toMyParticipation(r.participation),
       event: toEventSummary(r),
     });
+    // Срочный вызов из резерва — тоже приглашение, ждущее ответа.
+    const awaiting = (r: (typeof rows)[number]) =>
+      (r.participation.source === 'invitation' &&
+        ['invited', 'counter_proposed'].includes(r.participation.status)) ||
+      (r.participation.isUrgent && r.participation.status === 'reserve');
     return {
-      invitations: rows
-        .filter(
-          (r) =>
-            r.participation.source === 'invitation' &&
-            ['invited', 'counter_proposed'].includes(r.participation.status),
-        )
+      invitations: rows.filter(awaiting).map(item),
+      applications: rows
+        .filter((r) => r.participation.source !== 'invitation' && !awaiting(r))
         .map(item),
-      applications: rows.filter((r) => r.participation.source !== 'invitation').map(item),
     };
   });
 

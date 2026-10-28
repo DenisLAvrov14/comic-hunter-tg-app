@@ -66,7 +66,13 @@ export async function applyParticipationAction(
     let actor: ParticipationActor;
     if (isComedian) {
       actor = 'comedian';
-      if (req.action !== 'withdraw' && !can({ userId }, 'invitation.respond', resource)) {
+      // Отвечать можно на приглашение и на срочный вызов из резерва.
+      const urgentCall = p.isUrgent && p.status === 'reserve';
+      if (
+        req.action !== 'withdraw' &&
+        !urgentCall &&
+        !can({ userId }, 'invitation.respond', resource)
+      ) {
         throw new ApiError('INVALID_TRANSITION');
       }
     } else if (can({ userId }, 'applications.manage', resource)) {
@@ -78,20 +84,32 @@ export async function applyParticipationAction(
       throw new ApiError('INVALID_TRANSITION', 'Событие завершено или отменено');
     }
 
-    const result = transition(p.status, req.action, actor);
+    const result = transition(p.status, req.action, actor, { urgent: p.isUrgent });
     if (!result.ok) throw new ApiError('INVALID_TRANSITION');
     const to = result.to;
 
     const patch: Partial<Participation> = { status: to };
     let lineupChanged = false;
+    // Срочный вызов закрывается ответом резервиста или любым изменением его статуса.
+    if (p.isUrgent && (to !== p.status || req.action === 'decline')) {
+      patch.isUrgent = false;
+      patch.replacementFor = null;
+    }
+    let replaced: Participation | undefined;
+    let all: Participation[] = [];
 
     if (to === 'accepted') {
       await lockComedian(tx, p.comedianId);
-      const all = await listEventParticipations(tx, event.id);
-      const accepted = all.filter((x) => x.status === 'accepted');
+      all = await listEventParticipations(tx, event.id);
+      // Замена: резервист занимает позицию выбывшего, если тот ещё в составе.
+      replaced =
+        p.isUrgent && p.replacementFor
+          ? all.find((x) => x.id === p.replacementFor && x.status === 'accepted')
+          : undefined;
+      const accepted = all.filter((x) => x.status === 'accepted' && x.id !== replaced?.id);
       if (!hasFreeSlot(accepted.length, event.slotsCount)) throw new ApiError('LINEUP_FULL');
 
-      const position = nextPosition(all);
+      const position = replaced?.position ?? nextPosition(all);
       const windows = computeSlotWindows(event, [...accepted, { ...p, position }]);
       const [comedian] = await findComedians(tx, [p.comedianId]);
       if (comedian && !req.payload?.force) {
@@ -121,6 +139,22 @@ export async function applyParticipationAction(
       toStatus: to,
       payload: { action: req.action, ...(req.payload ?? {}) },
     });
+    if (replaced) {
+      await updateParticipation(tx, replaced.id, { status: 'removed', position: null });
+      await recordParticipationEvent(tx, {
+        participationId: replaced.id,
+        actorId: userId,
+        fromStatus: 'accepted',
+        toStatus: 'removed',
+        payload: { action: 'replaced', by: p.id },
+      });
+      // Остальные срочные вызовы на это место больше не актуальны.
+      for (const other of all) {
+        if (other.id !== p.id && other.isUrgent && other.replacementFor === replaced.id) {
+          await updateParticipation(tx, other.id, { isUrgent: false, replacementFor: null });
+        }
+      }
+    }
     if (lineupChanged) {
       if (p.status === 'accepted') await compactLineup(tx, event.id);
       await bumpLineupVersion(tx, event.id);

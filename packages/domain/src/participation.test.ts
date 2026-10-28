@@ -73,6 +73,28 @@ describe('transition', () => {
   });
 });
 
+describe('замена из резерва', () => {
+  it('срочно позванный резервист принимает сам', () => {
+    expect(transition('reserve', 'accept', 'comedian', { urgent: true })).toEqual({
+      ok: true,
+      to: 'accepted',
+    });
+  });
+  it('отказ от срочного вызова оставляет в резерве', () => {
+    expect(transition('reserve', 'decline', 'comedian', { urgent: true })).toEqual({
+      ok: true,
+      to: 'reserve',
+    });
+  });
+  it('без срочного вызова резервист сам в состав не попадает', () => {
+    expect(transition('reserve', 'accept', 'comedian').ok).toBe(false);
+    expect(transition('reserve', 'accept', 'comedian', { urgent: false }).ok).toBe(false);
+  });
+  it('urgent не открывает другие переходы', () => {
+    expect(transition('pending', 'accept', 'comedian', { urgent: true }).ok).toBe(false);
+  });
+});
+
 describe('статусы', () => {
   it('initialStatus по способу набора', () => {
     expect(initialStatus('invitation')).toBe('invited');

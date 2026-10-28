@@ -47,6 +47,8 @@ interface Rule {
   action: ParticipationAction;
   actor: ParticipationActor;
   to: ParticipationStatus;
+  /** Только для срочного вызова на замену (is_urgent). */
+  urgentOnly?: boolean;
 }
 
 /** Единственная таблица разрешённых переходов. */
@@ -56,6 +58,9 @@ export const TRANSITIONS: readonly Rule[] = [
   { from: ['pending'], action: 'reject', actor: 'organizer', to: 'rejected' },
   { from: ['pending', 'accepted'], action: 'reserve', actor: 'organizer', to: 'reserve' },
   { from: ['reserve'], action: 'promote', actor: 'organizer', to: 'accepted' },
+  // Замена: резервист, которого позвали срочно, соглашается сам; отказ оставляет его в резерве.
+  { from: ['reserve'], action: 'accept', actor: 'comedian', to: 'accepted', urgentOnly: true },
+  { from: ['reserve'], action: 'decline', actor: 'comedian', to: 'reserve', urgentOnly: true },
   // Приглашения — решает комик.
   { from: ['invited'], action: 'accept', actor: 'comedian', to: 'accepted' },
   { from: ['invited'], action: 'decline', actor: 'comedian', to: 'declined' },
@@ -75,9 +80,14 @@ export function transition(
   current: ParticipationStatus,
   action: ParticipationAction,
   actor: ParticipationActor,
+  ctx: { urgent?: boolean } = {},
 ): TransitionResult {
   const rule = TRANSITIONS.find(
-    (r) => r.action === action && r.actor === actor && r.from.includes(current),
+    (r) =>
+      r.action === action &&
+      r.actor === actor &&
+      r.from.includes(current) &&
+      (!r.urgentOnly || ctx.urgent === true),
   );
   return rule ? { ok: true, to: rule.to } : { ok: false, error: 'INVALID_TRANSITION' };
 }
