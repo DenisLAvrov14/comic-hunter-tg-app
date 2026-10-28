@@ -161,6 +161,8 @@ export const InvitationsResponse = z.object({
   invited: z.array(z.string().uuid()),
   /** Уже участвуют (активное участие) — повторно не приглашены. */
   skipped: z.array(z.string().uuid()),
+  /** Приняты автоматически по правилу комика. */
+  autoAccepted: z.array(z.string().uuid()),
 });
 export type InvitationsResponse = z.infer<typeof InvitationsResponse>;
 

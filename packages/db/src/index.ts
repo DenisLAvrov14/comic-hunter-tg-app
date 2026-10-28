@@ -13,9 +13,11 @@ export type {
   EventStaff,
   BusySlot,
   ScheduledNotification,
+  AutoAcceptRuleRow,
 } from './schema';
 export * from './repositories/users';
 export * from './repositories/profiles';
 export * from './repositories/reference';
 export * from './repositories/events';
+export * from './repositories/calendar';
 export { and, eq, inArray, sql } from 'drizzle-orm';

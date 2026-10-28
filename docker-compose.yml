@@ -59,6 +59,7 @@ services:
       BOT_USERNAME: ${BOT_USERNAME:-}
       MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:-}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: ${S3_BUCKET:-standup}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}

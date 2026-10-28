@@ -47,7 +47,13 @@ import {
   type Lineup,
   type MyParticipation,
 } from '@standup/shared';
-import { notifyEventParticipants, notifyTransition, rescheduleForEvent } from '@standup/notify';
+import {
+  enqueueNow,
+  notifyEventParticipants,
+  notifyTransition,
+  rescheduleForEvent,
+  rescheduleForParticipation,
+} from '@standup/notify';
 import { ApiError } from '../errors';
 import {
   eventResource,
@@ -60,6 +66,7 @@ import {
   toMyParticipation,
   windowEnd,
 } from '../services/events';
+import { tryAutoAccept } from '../services/autoAccept';
 import { toPhoto } from '../services/me';
 import { applyParticipationAction } from '../services/participations';
 import type { FileStorage } from '../storage';
@@ -351,6 +358,8 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
       }
       const known = new Set((await findComedians(tx, ids)).map((c) => c.userId));
       const invited: string[] = [];
+      const autoAccepted: string[] = [];
+      const venue = await requireVenue(event.venueId);
       const skipped: string[] = [];
       for (const comedianId of ids) {
         const existing = await findUserParticipation(tx, id, comedianId);
@@ -378,15 +387,41 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
           toStatus: p.status,
           payload: { action: 'invite' },
         });
-        // TODO(stage 7): автопринятие по auto_accept_rules.
-        await notifyTransition(
-          tx,
-          { participation: p, event, from: previousStatus, action: 'invite', actor: 'organizer' },
-          new Date(),
-        );
+        const now = new Date();
+        const auto = await tryAutoAccept(tx, p, event, venue.timezone);
+        if (auto.accepted) {
+          await enqueueNow(
+            tx,
+            [
+              {
+                userId: comedianId,
+                kind: 'invitation_auto_accepted',
+                participationId: p.id,
+                eventId: id,
+              },
+            ],
+            now,
+          );
+          await rescheduleForParticipation(tx, p.id, now);
+          autoAccepted.push(comedianId);
+        } else {
+          // В приглашении комику — почему не сработало автопринятие.
+          await notifyTransition(
+            tx,
+            {
+              participation: p,
+              event,
+              from: previousStatus,
+              action: 'invite',
+              actor: 'organizer',
+              payload: auto.reason ? { autoAcceptReason: auto.reason } : undefined,
+            },
+            now,
+          );
+        }
         invited.push(comedianId);
       }
-      return { invited, skipped };
+      return { invited, skipped, autoAccepted };
     });
   });
 

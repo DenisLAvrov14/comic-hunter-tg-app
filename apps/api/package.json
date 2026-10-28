@@ -19,8 +19,12 @@
     "@standup/shared": "workspace:*",
     "fastify": "^5.2.0",
     "fastify-plugin": "^5.0.1",
+    "ical-generator": "^8.1.1",
     "sharp": "^0.34.5",
     "tsx": "^4.19.0",
     "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "ical.js": "^2.2.1"
   }
 }

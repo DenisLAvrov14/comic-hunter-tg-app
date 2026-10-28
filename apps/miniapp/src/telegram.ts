@@ -5,6 +5,7 @@ import {
   isTMA,
   mainButton,
   miniApp,
+  openLink,
   requestWriteAccess,
   retrieveLaunchParams,
   retrieveRawInitData,
@@ -57,6 +58,23 @@ export function setVerticalSwipes(enabled: boolean) {
   if (!inTelegram) return;
   if (enabled) swipeBehavior.enableVertical.ifAvailable();
   else swipeBehavior.disableVertical.ifAvailable();
+}
+
+/**
+ * Внешняя ссылка (в т.ч. webcal:// для подписки на календарь).
+ * TODO(spec): Telegram официально открывает только http(s); если клиент откажется от webcal —
+ * пользователь подпишется по скопированной https-ссылке (инструкция на экране).
+ */
+export function openExternal(url: string) {
+  if (inTelegram && openLink.isAvailable()) {
+    try {
+      openLink(url);
+      return;
+    } catch {
+      // Неподдерживаемая схема — пробуем как обычную ссылку.
+    }
+  }
+  window.location.href = url;
 }
 
 export function haptic(kind: 'light' | 'success' | 'error' = 'light') {

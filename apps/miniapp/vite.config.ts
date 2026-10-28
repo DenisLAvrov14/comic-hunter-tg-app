@@ -10,6 +10,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:3000',
+      '/cal': process.env.API_PROXY_TARGET ?? 'http://localhost:3000',
       '/media': {
         target: process.env.MEDIA_PROXY_TARGET ?? 'http://localhost:9000',
         rewrite: (path) => path.replace(/^\/media/, '/standup'),

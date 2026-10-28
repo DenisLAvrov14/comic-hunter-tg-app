@@ -228,23 +228,21 @@ export async function renderNotification(
       if (p.status !== 'accepted' || p.dayConfirmation === 'declined')
         return { skip: 'not_in_lineup' };
       return msg(t.preShow(user.preShowMinutes ?? 30, gig), [open]);
-    case 'invitation_received':
-    case 'invitation_auto_accepted':
-      if (n.kind === 'invitation_received' && p.status !== 'invited') return { skip: 'answered' };
-      return msg(
-        n.kind === 'invitation_received'
-          ? t.invitation(await organizerName(db, g.event.organizerId), gig, p.message)
-          : t.applicationAccepted(gig),
+    case 'invitation_received': {
+      if (p.status !== 'invited') return { skip: 'answered' };
+      const reason = n.payload.autoAcceptReason as string | undefined;
+      const why = reason ? t.autoAcceptFailed(t.autoAcceptReasons[reason] ?? reason) : '';
+      return msg(t.invitation(await organizerName(db, g.event.organizerId), gig, p.message) + why, [
         [
-          n.kind === 'invitation_received'
-            ? [
-                { text: t.accept, callbackData: `iv:${p.id}:a` },
-                { text: t.decline, callbackData: `iv:${p.id}:d` },
-              ]
-            : [],
-          open,
+          { text: t.accept, callbackData: `iv:${p.id}:a` },
+          { text: t.decline, callbackData: `iv:${p.id}:d` },
         ],
-      );
+        open,
+      ]);
+    }
+    case 'invitation_auto_accepted':
+      if (p.status !== 'accepted') return { skip: 'not_in_lineup' };
+      return msg(t.autoAccepted(gig), [open]);
     case 'replacement_request':
       if (p.status !== 'reserve' || !p.isUrgent) return { skip: 'answered' };
       return msg(

@@ -16,6 +16,7 @@ export const testConfig: Config = {
   databaseUrl: TEST_DATABASE_URL ?? '',
   botUsername: '',
   miniAppShortName: '',
+  publicBaseUrl: 'https://example.test',
   internalToken: 'test-internal-token',
   botToken: TEST_BOT_TOKEN,
   jwtSecret: 'x'.repeat(32),

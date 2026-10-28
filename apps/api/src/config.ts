@@ -16,6 +16,8 @@ const EnvSchema = z.object({
   MINIAPP_SHORT_NAME: z.string().default(''),
   // Общий секрет бота и API для действий из кнопок в сообщениях.
   INTERNAL_TOKEN: z.string().default(''),
+  // Публичный адрес (ссылки на ICS-подписку).
+  PUBLIC_BASE_URL: z.string().default('http://localhost:8080'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET должен быть не короче 32 символов'),
   DEV_AUTH: bool,
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
@@ -37,6 +39,7 @@ export type Config = {
   botUsername: string;
   miniAppShortName: string;
   internalToken: string;
+  publicBaseUrl: string;
   jwtSecret: string;
   devAuth: boolean;
   logLevel: string;
@@ -66,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     botUsername: e.BOT_USERNAME.replace(/^@/, ''),
     miniAppShortName: e.MINIAPP_SHORT_NAME,
     internalToken: e.INTERNAL_TOKEN,
+    publicBaseUrl: e.PUBLIC_BASE_URL,
     jwtSecret: e.JWT_SECRET,
     devAuth: e.DEV_AUTH,
     logLevel: e.LOG_LEVEL,

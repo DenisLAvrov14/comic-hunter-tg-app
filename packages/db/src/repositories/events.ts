@@ -23,7 +23,7 @@ import {
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`;
 
 /** Подстрока для ILIKE с экранированными спецсимволами. */
-const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+export const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** Транзакция или обычное подключение — у обоих одинаковый интерфейс запросов. */
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];

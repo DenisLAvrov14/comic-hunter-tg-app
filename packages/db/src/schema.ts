@@ -333,6 +333,39 @@ export const busySlots = pgTable(
   ],
 );
 
+export const autoAcceptRules = pgTable(
+  'auto_accept_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    comedianId: uuid('comedian_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    organizerId: uuid('organizer_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // null — любые форматы / дни; дни недели ISO 1..7.
+    formats: eventFormatEnum('formats').array(),
+    weekdays: integer('weekdays').array(),
+    // «HH:mm» по местному времени площадки.
+    timeFrom: text('time_from'),
+    timeTo: text('time_to'),
+    maxGigsPerDay: integer('max_gigs_per_day'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  // Одно правило на пару комик — организатор.
+  (t) => [uniqueIndex('auto_accept_rules_pair_uq').on(t.comedianId, t.organizerId)],
+);
+
+export const calendarFeeds = pgTable('calendar_feeds', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  createdAt: createdAt(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
 export const scheduledNotifications = pgTable(
   'scheduled_notifications',
   {
@@ -373,3 +406,4 @@ export type Participation = typeof participations.$inferSelect;
 export type EventStaff = typeof eventStaff.$inferSelect;
 export type BusySlot = typeof busySlots.$inferSelect;
 export type ScheduledNotification = typeof scheduledNotifications.$inferSelect;
+export type AutoAcceptRuleRow = typeof autoAcceptRules.$inferSelect;

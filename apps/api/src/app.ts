@@ -9,6 +9,7 @@ import { registerErrorHandler } from './errors';
 import { authPlugin } from './plugins/auth';
 import { authRoutes } from './routes/auth';
 import { meRoutes } from './routes/me';
+import { calendarRoutes, icsRoutes } from './routes/calendar';
 import { eventRoutes } from './routes/events';
 import { internalRoutes } from './routes/internal';
 import { referenceRoutes } from './routes/reference';
@@ -42,6 +43,7 @@ export async function buildApp({ config, db, storage }: AppDeps) {
   await app.register(authPlugin);
 
   app.get('/health', async () => ({ ok: true }));
+  await app.register(icsRoutes, { db });
 
   await app.register(
     async (api) => {
@@ -50,6 +52,7 @@ export async function buildApp({ config, db, storage }: AppDeps) {
       await api.register(referenceRoutes, { db });
       await api.register(eventRoutes, { db, storage });
       await api.register(lineupRoutes, { db, storage });
+      await api.register(calendarRoutes, { db, publicBaseUrl: config.publicBaseUrl });
       if (config.internalToken) {
         await api.register(internalRoutes, { db, token: config.internalToken });
       }

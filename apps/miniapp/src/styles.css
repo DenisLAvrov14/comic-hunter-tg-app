@@ -524,3 +524,96 @@ code.link {
 .lineup-row label.checkbox {
   align-items: flex-start;
 }
+
+/* --- Календарь (этап 7) --- */
+
+.day-title {
+  font-size: 15px;
+}
+
+.day-title::first-letter,
+.center-text::first-letter {
+  text-transform: uppercase;
+}
+
+.event-card.busy {
+  background: rgba(142, 142, 147, 0.18);
+}
+
+.event-card.manual {
+  background: rgba(52, 199, 89, 0.15);
+}
+
+.center-text {
+  text-align: center;
+}
+
+.month {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.month .weekday {
+  text-align: center;
+  font-size: 12px;
+}
+
+.month .cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px 0;
+  font-weight: 400;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.month .cell.other {
+  opacity: 0.4;
+}
+
+.month .cell.today {
+  font-weight: 700;
+  color: var(--link);
+}
+
+.month .cell.selected {
+  outline: 2px solid var(--button);
+}
+
+.dots {
+  display: flex;
+  gap: 2px;
+  min-height: 6px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--button);
+}
+
+.dot.busy {
+  background: var(--hint);
+}
+
+.dot.manual_gig {
+  background: #34c759;
+}
+
+.chip {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.chip.active {
+  background: var(--button);
+  color: var(--button-text);
+}

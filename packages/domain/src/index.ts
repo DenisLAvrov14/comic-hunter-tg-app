@@ -5,3 +5,4 @@ export * from './permissions';
 export * from './slots';
 export * from './notifications';
 export * from './time';
+export * from './autoAccept';

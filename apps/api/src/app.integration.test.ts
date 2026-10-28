@@ -17,6 +17,7 @@ const config: Config = {
   databaseUrl: url ?? '',
   botUsername: '',
   miniAppShortName: '',
+  publicBaseUrl: 'https://example.test',
   internalToken: '',
   botToken: BOT_TOKEN,
   jwtSecret: 'x'.repeat(32),

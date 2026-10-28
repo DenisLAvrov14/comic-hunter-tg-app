@@ -2,6 +2,12 @@ import type {
   ApiErrorBody,
   AuthConfigResponse,
   AuthResponse,
+  AutoAcceptRule,
+  AutoAcceptRuleInput,
+  BusySlotInput,
+  CalendarBusy,
+  CalendarFeed,
+  CalendarResponse,
   BroadcastResponse,
   City,
   ComedianBrief,
@@ -21,6 +27,7 @@ import type {
   Lineup,
   Me,
   MyParticipation,
+  OrganizerCandidate,
   ParticipationActionRequest,
   StaffPermissionsRequest,
   OrganizerProfileInput,
@@ -140,6 +147,19 @@ export const api = {
   deleteStaff: (id: string, userId: string) =>
     request<Lineup>('DELETE', `/events/${id}/staff/${userId}`),
   hosting: () => request<EventSummary[]>('GET', '/me/hosting'),
+
+  calendar: (from: string, to: string) =>
+    request<CalendarResponse>('GET', `/me/calendar?${query({ from, to })}`),
+  addBusy: (body: BusySlotInput) => request<CalendarBusy>('POST', '/me/busy-slots', body),
+  deleteBusy: (id: string) => request<void>('DELETE', `/me/busy-slots/${id}`),
+  rules: () => request<AutoAcceptRule[]>('GET', '/me/auto-accept-rules'),
+  putRule: (organizerId: string, body: AutoAcceptRuleInput) =>
+    request<AutoAcceptRule[]>('PUT', `/me/auto-accept-rules/${organizerId}`, body),
+  deleteRule: (organizerId: string) =>
+    request<AutoAcceptRule[]>('DELETE', `/me/auto-accept-rules/${organizerId}`),
+  organizers: (q: string) => request<OrganizerCandidate[]>('GET', `/organizers?${query({ q })}`),
+  calendarFeed: () => request<CalendarFeed>('GET', '/me/calendar-feed'),
+  rotateCalendarFeed: () => request<CalendarFeed>('POST', '/me/calendar-feed/rotate', {}),
 };
 
 function query(params: object): string {

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { ru } from '@standup/shared';
 import { useAuth, useMe } from './auth';
+import { CalendarScreen } from './screens/Calendar';
 import { EventScreen, InboxScreen, OpenEventsScreen } from './screens/Comedian';
 import { Onboarding } from './screens/Onboarding';
 import { HostingScreen, LineupScreen } from './screens/Lineup';
@@ -22,6 +23,7 @@ function Home() {
       <nav className="list">
         {me.roles.includes('comedian') && (
           <>
+            <Link to="/calendar">{t.menu.calendar}</Link>
             <Link to="/open">{t.nav.open}</Link>
             <Link to="/inbox">{t.nav.inbox}</Link>
             <Link to="/profile">{t.menu.comedianProfile}</Link>
@@ -79,6 +81,7 @@ function AuthenticatedRoutes() {
       <Route path="/venues" element={<VenuesScreen />} />
       <Route path="/roles" element={<RolesScreen />} />
       <Route path="/settings" element={<SettingsScreen />} />
+      <Route path="/calendar" element={<CalendarScreen />} />
       <Route path="/open" element={<OpenEventsScreen />} />
       <Route path="/inbox" element={<InboxScreen />} />
       <Route path="/join/:token" element={<EventScreen />} />
