@@ -1,0 +1,107 @@
+name: standup-calendar
+
+x-node-env: &node-env
+  NODE_ENV: ${NODE_ENV:-development}
+  DATABASE_URL: postgres://standup:standup@postgres:5432/standup
+  REDIS_URL: redis://redis:6379
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: standup
+      POSTGRES_PASSWORD: standup
+      POSTGRES_DB: standup
+    ports: ['5442:5432']
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U standup']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      retries: 20
+
+  minio:
+    # MinIO больше не публикует образы на Docker Hub/quay — берём замороженную сборку Bitnami
+    # (тот же релиз 2025-04-22). Только для dev; в prod — любое S3-совместимое хранилище.
+    image: docker.io/bitnamilegacy/minio:2025.4.22
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports: ['9000:9000', '9001:9001']
+    volumes: [miniodata:/bitnami/minio/data]
+
+  migrate:
+    image: localhost/standup-calendar-node:dev
+    build: { context: ., target: node-app }
+    command: pnpm --filter @standup/db migrate
+    environment: *node-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    image: localhost/standup-calendar-node:dev
+    build: { context: ., target: node-app }
+    command: pnpm --filter @standup/api start
+    environment:
+      <<: *node-env
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-dev-secret-change-me}
+      DEV_AUTH: ${DEV_AUTH:-true}
+      BOT_USERNAME: ${BOT_USERNAME:-}
+      MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:-}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-standup}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      # Фото отдаёт nginx miniapp: /media/* → minio/<bucket>/*
+      S3_PUBLIC_URL: /media
+      S3_CREATE_BUCKET: 'true'
+    ports: ['3000:3000']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      minio: { condition: service_started }
+    restart: unless-stopped
+
+  bot:
+    image: localhost/standup-calendar-node:dev
+    build: { context: ., target: node-app }
+    command: pnpm --filter @standup/bot start
+    environment:
+      <<: *node-env
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      BOT_USERNAME: ${BOT_USERNAME:-}
+      MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:-}
+      MINIAPP_URL: ${MINIAPP_URL:-}
+      BOT_MODE: ${BOT_MODE:-polling}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  worker:
+    image: localhost/standup-calendar-node:dev
+    build: { context: ., target: node-app }
+    command: pnpm --filter @standup/worker start
+    environment: *node-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  miniapp:
+    image: localhost/standup-calendar-miniapp:dev
+    build: { context: ., target: miniapp }
+    ports: ['8080:80']
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  miniodata:

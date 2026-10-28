@@ -1,0 +1,110 @@
+import {
+  backButton,
+  hapticFeedback,
+  init,
+  isTMA,
+  mainButton,
+  miniApp,
+  requestWriteAccess,
+  retrieveLaunchParams,
+  retrieveRawInitData,
+  themeParams,
+  viewport,
+} from '@telegram-apps/sdk-react';
+
+export interface TelegramEnv {
+  inTelegram: boolean;
+  initData: string | null;
+  startParam: string | null;
+}
+
+let inTelegram = false;
+
+/** Инициализирует SDK, если приложение открыто внутри Telegram. */
+export function initTelegram(): TelegramEnv {
+  scrollFocusedFieldIntoView();
+  if (!isTMA()) return { inTelegram: false, initData: null, startParam: null };
+
+  init();
+  inTelegram = true;
+  themeParams.mountSync.ifAvailable();
+  themeParams.bindCssVars.ifAvailable();
+  miniApp.mountSync.ifAvailable();
+  backButton.mount.ifAvailable();
+  if (mainButton.mount.isAvailable()) mainButton.mount();
+  void viewport.mount
+    .ifAvailable()?.[1]
+    ?.then(() => viewport.expand.ifAvailable())
+    .catch(() => {});
+  miniApp.ready.ifAvailable();
+
+  const lp = retrieveLaunchParams();
+  return {
+    inTelegram: true,
+    initData: retrieveRawInitData() ?? null,
+    startParam: lp.tgWebAppStartParam ?? null,
+  };
+}
+
+export function isInTelegram() {
+  return inTelegram;
+}
+
+export function haptic(kind: 'light' | 'success' | 'error' = 'light') {
+  if (!inTelegram) return;
+  if (kind === 'light') hapticFeedback.impactOccurred.ifAvailable('light');
+  else hapticFeedback.notificationOccurred.ifAvailable(kind);
+}
+
+/** Просит разрешение писать пользователю. true — разрешил. Вне Telegram — false. */
+export async function askWriteAccess(): Promise<boolean> {
+  if (!inTelegram || !requestWriteAccess.isAvailable()) return false;
+  try {
+    return (await requestWriteAccess()) === 'allowed';
+  } catch {
+    return false;
+  }
+}
+
+export interface MainButtonParams {
+  text: string;
+  enabled: boolean;
+  loading: boolean;
+}
+
+export function setMainButton(p: MainButtonParams) {
+  mainButton.setParams.ifAvailable({
+    text: p.text,
+    isVisible: true,
+    isEnabled: p.enabled,
+    isLoaderVisible: p.loading,
+  });
+}
+
+/** Подписка на нажатие MainButton; отписка заодно прячет кнопку. */
+export function onMainButton(onClick: () => void): () => void {
+  const off = mainButton.onClick.ifAvailable(onClick);
+  return () => {
+    if (off[0]) off[1]();
+    mainButton.setParams.ifAvailable({ isVisible: false, isLoaderVisible: false });
+  };
+}
+
+export function showBackButton(onClick: () => void): () => void {
+  backButton.show.ifAvailable();
+  const off = backButton.onClick.ifAvailable(onClick);
+  return () => {
+    if (off[0]) off[1]();
+    backButton.hide.ifAvailable();
+  };
+}
+
+// На iOS клавиатура перекрывает поля ввода — прокручиваем поле в видимую область.
+function scrollFocusedFieldIntoView() {
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+    }
+  });
+}
