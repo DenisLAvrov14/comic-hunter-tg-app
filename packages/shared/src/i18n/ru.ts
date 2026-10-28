@@ -352,6 +352,16 @@ export const ru = {
       google:
         'Google Календарь: только в веб-версии — calendar.google.com → «Другие календари» → «+» → «Добавить по URL» → вставьте ссылку.',
     },
+    posts: {
+      title: 'Опубликовать в чат',
+      hint: (bot: string) =>
+        `Добавьте ${bot ? `@${bot}` : 'бота'} в свою группу или канал (в канале — администратором с правом публикации), и чат появится здесь. Анонс обновляется сам при изменениях, а когда состав заполнится — появится пометка «Набор закрыт».`,
+      empty: 'Пока нет чатов с ботом.',
+      noRights: 'нет прав на публикацию',
+      publish: (n: number) => (n > 0 ? `Опубликовать (${n})` : 'Выберите чаты'),
+      published: 'Опубликовано в',
+      failed: (n: number) => `Не удалось опубликовать в ${n} чат(а) — проверьте права бота.`,
+    },
     hosting: {
       title: 'Я веду',
       empty: 'Вас пока не назначили ведущим.',
@@ -387,6 +397,20 @@ export const ru = {
     item: (n: number, name: string, link: string | null) =>
       `${n}. ${name}${link ? ` — ${link}` : ''}`,
     conditions: 'Условия:',
+  },
+  // Анонс события в группе/канале (SPEC §7.4).
+  post: {
+    title: (title: string) => `🎤 ${title}`,
+    when: (when: string) => `📅 ${when}`,
+    venue: (name: string, address: string) => `📍 ${name}, ${address}`,
+    format: (format: string, slots: number) => `${format} · мест в составе: ${slots}`,
+    organizer: (name: string) => `Организатор: ${name}`,
+    conditions: (text: string) => `Условия: ${text}`,
+    open: '🎙 Набор открыт — записывайтесь!',
+    closed: '🔒 Набор закрыт',
+    cancelled: '🚫 Событие отменено',
+    apply: 'Записаться',
+    details: 'Подробнее',
   },
   // Календарная подписка (SPEC §10).
   ics: {
@@ -478,6 +502,7 @@ export const ru = {
     VERSION_MISMATCH: 'Данные изменились, обновите список',
     INVALID_TRANSITION: 'Действие недоступно',
     RATE_LIMITED: 'Слишком много запросов, попробуйте позже',
+    NETWORK: 'Нет соединения. Проверьте интернет и попробуйте ещё раз.',
     INTERNAL: 'Что-то пошло не так',
   },
 } as const;

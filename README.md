@@ -42,6 +42,14 @@ cloudflared tunnel --url http://localhost:8080
 
 Для ссылок вида `t.me/<bot>/<app>?startapp=...` зарегистрируйте Mini App в @BotFather (`/newapp`) с тем же URL и укажите `MINIAPP_SHORT_NAME`.
 
+## Проверка в Telegram
+
+1. Поднять https-туннель на Mini App: `cloudflared tunnel --url http://localhost:8080` (или ngrok).
+2. В `.env`: `MINIAPP_URL=<https-адрес>`, `PUBLIC_BASE_URL=<тот же адрес>` (ссылки на ICS).
+3. В @BotFather: `/newapp` → выбрать бота → URL = `MINIAPP_URL` → short name → прописать в `.env` как `MINIAPP_SHORT_NAME`.
+4. Перезапустить api, bot, worker, miniapp. В боте: `/start` → «Открыть приложение».
+5. Анонсы: добавить бота в свою группу (в канал — админом с правом публикации) → в Mini App на экране состава «Опубликовать в чат».
+
 ## Разработка
 
 ```sh

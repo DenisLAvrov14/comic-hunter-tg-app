@@ -14,15 +14,19 @@ import { eventRoutes } from './routes/events';
 import { internalRoutes } from './routes/internal';
 import { referenceRoutes } from './routes/reference';
 import { lineupRoutes } from './routes/lineup';
+import { refreshEventPosts, type ChatPoster } from '@standup/notify';
+import { postRoutes } from './routes/posts';
 import type { FileStorage } from './storage';
 
 export interface AppDeps {
   config: Config;
   db: Db;
   storage: FileStorage;
+  /** Посты анонсов в группах и каналах. */
+  poster: ChatPoster;
 }
 
-export async function buildApp({ config, db, storage }: AppDeps) {
+export async function buildApp({ config, db, storage, poster }: AppDeps) {
   const app = Fastify({
     logger:
       config.env === 'test'
@@ -42,6 +46,16 @@ export async function buildApp({ config, db, storage }: AppDeps) {
   await app.register(multipart);
   await app.register(authPlugin);
 
+  const links = { botUsername: config.botUsername, miniAppShortName: config.miniAppShortName };
+  /** Событие или состав изменились — обновить анонсы в чатах (SPEC §7.4). */
+  const onEventChanged = async (eventId: string) => {
+    try {
+      await refreshEventPosts(db, poster, links, eventId);
+    } catch (err) {
+      app.log.warn({ err, eventId }, 'event posts refresh failed');
+    }
+  };
+
   app.get('/health', async () => ({ ok: true }));
   await app.register(icsRoutes, { db });
 
@@ -50,8 +64,9 @@ export async function buildApp({ config, db, storage }: AppDeps) {
       await api.register(authRoutes, { config, db, storage });
       await api.register(meRoutes, { db, storage });
       await api.register(referenceRoutes, { db });
-      await api.register(eventRoutes, { db, storage });
+      await api.register(eventRoutes, { db, storage, onEventChanged });
       await api.register(lineupRoutes, { db, storage });
+      await api.register(postRoutes, { db, poster, links });
       await api.register(calendarRoutes, { db, publicBaseUrl: config.publicBaseUrl });
       if (config.internalToken) {
         await api.register(internalRoutes, { db, token: config.internalToken });

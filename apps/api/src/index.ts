@@ -1,12 +1,14 @@
 import { createDb } from '@standup/db';
 import { buildApp } from './app';
 import { loadConfig } from './config';
+import { BotApiPoster, MemoryPoster } from '@standup/notify';
 import { S3Storage } from './storage';
 
 const config = loadConfig();
 const { db, close } = createDb(config.databaseUrl);
 const storage = new S3Storage(config.s3);
-const app = await buildApp({ config, db, storage });
+const poster = config.botToken ? new BotApiPoster(config.botToken) : new MemoryPoster();
+const app = await buildApp({ config, db, storage, poster });
 
 if (config.devAuth) app.log.warn('DEV_AUTH включён: вход без подписи Telegram разрешён');
 if (config.s3.createBucket) {

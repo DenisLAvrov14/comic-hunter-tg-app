@@ -1,12 +1,13 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import type { InlineKeyboardMarkup } from 'grammy/types';
 import type { Logger } from 'pino';
-import { findUserByTelegramId, upsertTelegramUser, type Db } from '@standup/db';
+import { findUserByTelegramId, upsertTelegramChat, upsertTelegramUser, type Db } from '@standup/db';
 import { renderDigest, todayFor, type InlineButton } from '@standup/notify';
 import { ru } from '@standup/shared';
 import { apiRequestFor, parseCallback } from './callbacks';
 import type { BotConfig } from './config';
 import { isValidStartParam, miniAppDirectLink } from './links';
+import { botCanPost, joined, type ChatMemberStatus } from './membership';
 
 function toMarkup(rows: InlineButton[][] = []): InlineKeyboardMarkup {
   return {
@@ -114,6 +115,23 @@ export function createBot(config: BotConfig, db: Db, log: Logger) {
       if (link) kb.url(t.openSettings, link);
     }
     await ctx.reply(ru.notify.settings, { reply_markup: kb });
+  });
+
+  // Бота добавили в группу/канал, изменили права или удалили: запоминаем, куда можно постить
+  // анонсы. «Кто добавил» — тот, кто совершил добавление; публиковать сможет только он.
+  bot.on('my_chat_member', async (ctx) => {
+    const { chat, from, new_chat_member, old_chat_member } = ctx.myChatMember;
+    if (chat.type === 'private') return;
+    const isJoin = joined(old_chat_member.status, new_chat_member.status);
+    const adder = isJoin ? await upsertTelegramUser(db, from) : null;
+    await upsertTelegramChat(db, {
+      telegramChatId: chat.id,
+      title: chat.title,
+      type: chat.type,
+      addedBy: adder?.id ?? null,
+      botCanPost: botCanPost(chat.type, new_chat_member as ChatMemberStatus),
+    });
+    log.info({ chatId: chat.id, status: new_chat_member.status }, 'bot chat membership changed');
   });
 
   bot.catch((err) => {

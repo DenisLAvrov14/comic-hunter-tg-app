@@ -3,7 +3,7 @@ import { createDb, runMigrations, syncCities, type Db } from '@standup/db';
 import { buildApp } from './app';
 import { signInitData } from './auth/initData';
 import type { Config } from './config';
-import { MemorySender, runDueOnce } from '@standup/notify';
+import { MemoryPoster, MemorySender, runDueOnce } from '@standup/notify';
 import { MemoryStorage } from './storage';
 
 export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -14,8 +14,8 @@ export const testConfig: Config = {
   port: 0,
   host: '127.0.0.1',
   databaseUrl: TEST_DATABASE_URL ?? '',
-  botUsername: '',
-  miniAppShortName: '',
+  botUsername: 'standup_bot',
+  miniAppShortName: 'app',
   publicBaseUrl: 'https://example.test',
   internalToken: 'test-internal-token',
   botToken: TEST_BOT_TOKEN,
@@ -60,6 +60,7 @@ export async function setupTestApp(): Promise<{
   app: App;
   db: Db;
   sender: MemorySender;
+  poster: MemoryPoster;
   /** Отправить созревшие уведомления на момент `now` (подмена времени в тестах). */
   deliver: (now?: Date) => Promise<Record<string, number>>;
   close: () => Promise<void>;
@@ -68,11 +69,13 @@ export async function setupTestApp(): Promise<{
   await runMigrations(db);
   await syncCities(db);
   const sender = new MemorySender();
-  const app = await buildApp({ config: testConfig, db, storage: new MemoryStorage() });
+  const poster = new MemoryPoster();
+  const app = await buildApp({ config: testConfig, db, storage: new MemoryStorage(), poster });
   return {
     app,
     db,
     sender,
+    poster,
     deliver: (now = new Date()) =>
       runDueOnce(db, {
         sender,

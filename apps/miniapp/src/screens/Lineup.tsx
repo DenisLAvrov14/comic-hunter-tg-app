@@ -706,6 +706,8 @@ function Tools({
 
       {rights.organizer && lineup && <Hosts event={event} staff={lineup.staff} />}
 
+      {rights.organizer && active && event.status !== 'draft' && <Posts event={event} />}
+
       {rights.organizer && active && (
         <section className="card">
           <h2>{t.manage.link}</h2>
@@ -852,6 +854,72 @@ function Hosts({ event, staff }: { event: EventDetails; staff: StaffMember[] }) 
         </button>
       )}
       <ErrorText error={update.error} />
+    </section>
+  );
+}
+
+/** Анонс в группы и каналы, куда организатор добавил бота (SPEC §7.4). */
+function Posts({ event }: { event: EventDetails }) {
+  const p = t.posts;
+  const queryClient = useQueryClient();
+  const chats = useQuery({ queryKey: ['myChats'], queryFn: api.myChats });
+  const posts = useQuery({
+    queryKey: ['posts', event.id],
+    queryFn: () => api.eventPosts(event.id),
+  });
+  const config = useQuery({
+    queryKey: ['authConfig'],
+    queryFn: api.authConfig,
+    staleTime: Infinity,
+  });
+  const [selected, setSelected] = useState<string[]>([]);
+  const publish = useMutation({
+    mutationFn: () => api.publishPosts(event.id, selected),
+    onSuccess: (r) => {
+      haptic(r.failed.length ? 'error' : 'success');
+      setSelected([]);
+      queryClient.setQueryData(['posts', event.id], r.posts);
+    },
+  });
+
+  return (
+    <section className="card">
+      <h2>{p.title}</h2>
+      <p className="hint">{p.hint(config.data?.botUsername ?? '')}</p>
+      {posts.data && posts.data.length > 0 && (
+        <p className="success">
+          {p.published}: {posts.data.map((x) => x.title).join(', ')}
+        </p>
+      )}
+      {chats.data?.length === 0 && <p className="hint">{p.empty}</p>}
+      {chats.data?.map((c) => (
+        <label key={c.id} className="checkbox">
+          <input
+            type="checkbox"
+            disabled={!c.botCanPost}
+            checked={selected.includes(c.id)}
+            onChange={() =>
+              setSelected((s) => (s.includes(c.id) ? s.filter((x) => x !== c.id) : [...s, c.id]))
+            }
+          />
+          <span>
+            {c.title}
+            {!c.botCanPost && <span className="hint"> · {p.noRights}</span>}
+          </span>
+        </label>
+      ))}
+      {chats.data && chats.data.length > 0 && (
+        <button
+          disabled={selected.length === 0 || publish.isPending}
+          onClick={() => publish.mutate()}
+        >
+          {p.publish(selected.length)}
+        </button>
+      )}
+      {publish.data && publish.data.failed.length > 0 && (
+        <p className="error">{p.failed(publish.data.failed.length)}</p>
+      )}
+      <ErrorText error={publish.error ?? chats.error} />
     </section>
   );
 }

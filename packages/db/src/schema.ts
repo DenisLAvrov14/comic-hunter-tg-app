@@ -366,6 +366,35 @@ export const calendarFeeds = pgTable('calendar_feeds', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
 
+export const telegramChats = pgTable('telegram_chats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  telegramChatId: bigint('telegram_chat_id', { mode: 'number' }).notNull().unique(),
+  title: text('title').notNull(),
+  // group | supergroup | channel
+  type: text('type').notNull(),
+  addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
+  botCanPost: boolean('bot_can_post').notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const eventPosts = pgTable(
+  'event_posts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => telegramChats.id, { onDelete: 'cascade' }),
+    telegramMessageId: bigint('telegram_message_id', { mode: 'number' }).notNull(),
+    createdAt: createdAt(),
+  },
+  // Один анонс события в чат: повторная публикация обновляет его.
+  (t) => [uniqueIndex('event_posts_event_chat_uq').on(t.eventId, t.chatId)],
+);
+
 export const scheduledNotifications = pgTable(
   'scheduled_notifications',
   {
@@ -407,3 +436,4 @@ export type EventStaff = typeof eventStaff.$inferSelect;
 export type BusySlot = typeof busySlots.$inferSelect;
 export type ScheduledNotification = typeof scheduledNotifications.$inferSelect;
 export type AutoAcceptRuleRow = typeof autoAcceptRules.$inferSelect;
+export type TelegramChat = typeof telegramChats.$inferSelect;

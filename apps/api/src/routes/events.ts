@@ -76,10 +76,11 @@ const TokenParams = z.object({ token: z.string().min(10).max(100) });
 const WhenQuery = z.object({ when: z.enum(['upcoming', 'past']).default('upcoming') });
 const DuplicateRequest = z.object({ startsAtLocal: z.string().optional() }).default({});
 
-export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = async (
-  app,
-  { db, storage },
-) => {
+export const eventRoutes: FastifyPluginAsync<{
+  db: Db;
+  storage: FileStorage;
+  onEventChanged: (eventId: string) => Promise<void>;
+}> = async (app, { db, storage, onEventChanged }) => {
   app.addHook('onRequest', app.authenticate);
 
   async function requireRole(userId: string, role: 'comedian' | 'organizer') {
@@ -240,6 +241,7 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
       // TODO(spec): ТЗ §6.1 — после переноса заново проверить пересечения у состава и
       // уведомить организатора о новых. Пока организатор видит их только в составе.
     });
+    await onEventChanged(id);
     return loadEventDetails(db, req.user.sub, id);
   });
 
@@ -252,6 +254,7 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
         await notifyEventParticipants(tx, event, 'event_cancelled', new Date());
       });
     }
+    await onEventChanged(id);
     return loadEventDetails(db, req.user.sub, id);
   });
 
@@ -347,7 +350,7 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
     const userId = req.user.sub;
     const ids = [...new Set(body.comedianIds)];
 
-    return db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const event = await lockEvent(tx, id);
       if (!event) throw new ApiError('NOT_FOUND');
       if (!can({ userId }, 'comedians.invite', await eventResource(tx, event, userId))) {
@@ -423,6 +426,8 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
       }
       return { invited, skipped, autoAccepted };
     });
+    if (result.autoAccepted.length) await onEventChanged(id);
+    return result;
   });
 
   app.get('/events/:id/lineup', async (req): Promise<Lineup> => {
@@ -438,7 +443,10 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
   app.post('/participations/:id/actions', async (req): Promise<MyParticipation> => {
     const { id } = IdParams.parse(req.params);
     const body = ParticipationActionRequest.parse(req.body);
-    return toMyParticipation(await applyParticipationAction(db, req.user.sub, id, body));
+    const updated = await applyParticipationAction(db, req.user.sub, id, body);
+    // Состав мог заполниться или освободиться — пометка «Набор закрыт» в анонсах.
+    await onEventChanged(updated.eventId);
+    return toMyParticipation(updated);
   });
 
   // --- Входящие комика ---

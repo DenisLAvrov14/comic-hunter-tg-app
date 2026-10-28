@@ -17,6 +17,7 @@ import type {
   DevAuthRequest,
   ErrorCode,
   EventDetails,
+  EventPost,
   EventFormat,
   EventInput,
   EventPatch,
@@ -29,7 +30,9 @@ import type {
   MyParticipation,
   OrganizerCandidate,
   ParticipationActionRequest,
+  PublishPostsResponse,
   StaffPermissionsRequest,
+  TelegramChatView,
   OrganizerProfileInput,
   PatchMeRequest,
   Photo,
@@ -63,11 +66,17 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (body !== undefined && !isForm) headers['content-type'] = 'application/json';
   if (token) headers.authorization = `Bearer ${token}`;
 
-  const res = await fetch(BASE + path, {
-    method,
-    headers,
-    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
+    });
+  } catch {
+    // Нет сети или сервер недоступен — понятное сообщение вместо «Failed to fetch».
+    throw new ApiRequestError(0, 'INTERNAL', ru.errors.NETWORK);
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => null)) as ApiErrorBody | null;
     const code = err?.error.code ?? 'INTERNAL';
@@ -160,6 +169,10 @@ export const api = {
   organizers: (q: string) => request<OrganizerCandidate[]>('GET', `/organizers?${query({ q })}`),
   calendarFeed: () => request<CalendarFeed>('GET', '/me/calendar-feed'),
   rotateCalendarFeed: () => request<CalendarFeed>('POST', '/me/calendar-feed/rotate', {}),
+  myChats: () => request<TelegramChatView[]>('GET', '/me/chats'),
+  eventPosts: (id: string) => request<EventPost[]>('GET', `/events/${id}/posts`),
+  publishPosts: (id: string, chatIds: string[]) =>
+    request<PublishPostsResponse>('POST', `/events/${id}/posts`, { chatIds }),
 };
 
 function query(params: object): string {

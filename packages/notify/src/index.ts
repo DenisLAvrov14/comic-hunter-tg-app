@@ -3,3 +3,4 @@ export * from './links';
 export * from './schedule';
 export * from './render';
 export * from './deliver';
+export * from './posts';

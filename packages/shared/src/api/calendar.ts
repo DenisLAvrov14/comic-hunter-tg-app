@@ -96,3 +96,25 @@ export const CalendarFeed = z.object({
   webcalUrl: z.string(),
 });
 export type CalendarFeed = z.infer<typeof CalendarFeed>;
+
+export const TelegramChatView = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  type: z.string(),
+  botCanPost: z.boolean(),
+});
+export type TelegramChatView = z.infer<typeof TelegramChatView>;
+
+export const EventPost = z.object({
+  chatId: z.string().uuid(),
+  title: z.string(),
+  messageId: z.number().int(),
+});
+export type EventPost = z.infer<typeof EventPost>;
+
+export const PublishPostsResponse = z.object({
+  published: z.array(z.string().uuid()),
+  failed: z.array(z.string().uuid()),
+  posts: z.array(EventPost),
+});
+export type PublishPostsResponse = z.infer<typeof PublishPostsResponse>;
