@@ -697,7 +697,7 @@ function Tools({
           </button>
           {broadcast.data && (
             <p className="success">
-              {l.broadcastResult(broadcast.data.sent, broadcast.data.failed)}
+              {l.broadcastResult(broadcast.data.queued, broadcast.data.skipped)}
             </p>
           )}
           <ErrorText error={broadcast.error} />

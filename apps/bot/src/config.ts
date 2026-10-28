@@ -15,6 +15,9 @@ const EnvSchema = z.object({
   BOT_WEBHOOK_PORT: z.coerce.number().int().default(3001),
   BOT_WEBHOOK_SECRET: z.string().default(''),
   LOG_LEVEL: z.string().default('info'),
+  /** API внутри сети: кнопки в сообщениях выполняются через его эндпоинты. */
+  API_INTERNAL_URL: z.string().default('http://localhost:3000'),
+  INTERNAL_TOKEN: z.string().default(''),
 });
 
 export type BotConfig = z.infer<typeof EnvSchema>;

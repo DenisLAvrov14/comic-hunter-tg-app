@@ -10,6 +10,7 @@ COPY apps/worker/package.json apps/worker/
 COPY apps/miniapp/package.json apps/miniapp/
 COPY packages/db/package.json packages/db/
 COPY packages/domain/package.json packages/domain/
+COPY packages/notify/package.json packages/notify/
 COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile
 

@@ -37,6 +37,10 @@ export const users = pgTable('users', {
   timezone: text('timezone').notNull().default('Europe/Moscow'),
   botStarted: boolean('bot_started').notNull().default(false),
   botBlocked: boolean('bot_blocked').notNull().default(false),
+  // Настройки уведомлений (SPEC §6.4): время дайджеста по таймзоне пользователя
+  // и напоминание за N минут до выхода (null — выключено).
+  digestTime: text('digest_time').notNull().default('10:00'),
+  preShowMinutes: integer('pre_show_minutes').default(30),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -173,6 +177,35 @@ export const dayConfirmationEnum = pgEnum('day_confirmation', ['none', 'confirme
 export const attendanceEnum = pgEnum('attendance', ['unknown', 'present', 'absent']);
 export const staffRoleEnum = pgEnum('staff_role', ['host']);
 export const busyKindEnum = pgEnum('busy_kind', ['busy', 'manual_gig']);
+export const notificationKindEnum = pgEnum('notification_kind', [
+  'invitation_received',
+  'invitation_auto_accepted',
+  'application_accepted',
+  'application_rejected',
+  'moved_to_reserve',
+  'promoted_from_reserve',
+  'removed_from_lineup',
+  'event_changed',
+  'event_cancelled',
+  'lineup_position_changed',
+  'day_digest',
+  'day_digest_repeat',
+  'unconfirmed_alert',
+  'withdrawal_alert',
+  'pre_show_reminder',
+  'replacement_request',
+  'counter_proposal_received',
+  'new_application',
+  'broadcast',
+]);
+export const notificationStatusEnum = pgEnum('notification_status', [
+  'pending',
+  // Планировщик забрал и поставил в очередь отправки.
+  'queued',
+  'sent',
+  'cancelled',
+  'failed',
+]);
 
 export const events = pgTable(
   'events',
@@ -300,6 +333,35 @@ export const busySlots = pgTable(
   ],
 );
 
+export const scheduledNotifications = pgTable(
+  'scheduled_notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: notificationKindEnum('kind').notNull(),
+    participationId: uuid('participation_id').references(() => participations.id, {
+      onDelete: 'cascade',
+    }),
+    eventId: uuid('event_id').references(() => events.id, { onDelete: 'cascade' }),
+    sendAt: timestamp('send_at', { withTimezone: true }).notNull(),
+    status: notificationStatusEnum('status').notNull().default('pending'),
+    dedupeKey: text('dedupe_key').notNull().unique(),
+    // Параметры сообщения (текст рассылки и т.п.); у дайджеста после отправки — какие участия он покрыл.
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('scheduled_notifications_due_idx').on(t.status, t.sendAt),
+    index('scheduled_notifications_participation_idx').on(t.participationId),
+    index('scheduled_notifications_event_idx').on(t.eventId),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type City = typeof cities.$inferSelect;
 export type ComedianProfile = typeof comedianProfiles.$inferSelect;
@@ -310,3 +372,4 @@ export type Event = typeof events.$inferSelect;
 export type Participation = typeof participations.$inferSelect;
 export type EventStaff = typeof eventStaff.$inferSelect;
 export type BusySlot = typeof busySlots.$inferSelect;
+export type ScheduledNotification = typeof scheduledNotifications.$inferSelect;

@@ -21,6 +21,7 @@ import {
   transition,
   type ParticipationActor,
 } from '@standup/domain';
+import { notifyTransition, rescheduleForEvent } from '@standup/notify';
 import type { ParticipationActionRequest } from '@standup/shared';
 import { ApiError } from '../errors';
 import { scheduleConflicts } from './events';
@@ -139,8 +140,17 @@ export async function applyParticipationAction(
       toStatus: to,
       payload: { action: req.action, ...(req.payload ?? {}) },
     });
+    const now = new Date();
     if (replaced) {
-      await updateParticipation(tx, replaced.id, { status: 'removed', position: null });
+      const removed = await updateParticipation(tx, replaced.id, {
+        status: 'removed',
+        position: null,
+      });
+      await notifyTransition(
+        tx,
+        { participation: removed, event, from: 'accepted', action: 'remove', actor: 'organizer' },
+        now,
+      );
       await recordParticipationEvent(tx, {
         participationId: replaced.id,
         actorId: userId,
@@ -159,7 +169,13 @@ export async function applyParticipationAction(
       if (p.status === 'accepted') await compactLineup(tx, event.id);
       await bumpLineupVersion(tx, event.id);
     }
-    // TODO(stage 6): уведомление участнику/организатору о переходе (SPEC §7.2).
+    await notifyTransition(
+      tx,
+      { participation: updated, event, from: p.status, action: req.action, actor },
+      now,
+    );
+    // Позиции остальных могли сдвинуться — пересчёт напоминаний всего состава.
+    if (lineupChanged) await rescheduleForEvent(tx, event.id, now);
     return updated;
   });
 }

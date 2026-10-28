@@ -203,7 +203,13 @@ describe.skipIf(!TEST_DATABASE_URL)('API состав (Postgres)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().reserve.every((x: { isUrgent: boolean }) => x.isUrgent)).toBe(true);
-    // Сообщения ушли обоим резервистам.
+    // Срочный вызов идёт через очередь уведомлений — сообщения ушли обоим резервистам.
+    await ctx.deliver();
+    ctx.sender.sent.splice(
+      0,
+      ctx.sender.sent.length,
+      ...ctx.sender.sent.filter((m) => m.text.includes('замена')),
+    );
     expect(ctx.sender.sent.map((m) => m.chatId).sort()).toEqual(
       comics
         .slice(3)
@@ -233,9 +239,13 @@ describe.skipIf(!TEST_DATABASE_URL)('API состав (Postgres)', () => {
   it('рассылка составу: заблокировавший бота помечается', async () => {
     ctx.sender.sent.length = 0;
     ctx.sender.blocked.add(comics[0]!.telegramId);
+    await ctx.deliver();
+    ctx.sender.sent.length = 0;
     const res = await host.call('POST', `/events/${eventId}/broadcast`, { text: 'Сбор в 18:30' });
-    expect(res.json()).toEqual({ sent: 2, failed: 1 });
-    expect(ctx.sender.sent[0]!.text).toContain('Сбор в 18:30');
+    expect(res.json()).toEqual({ queued: 3, skipped: 0 });
+    await ctx.deliver();
+    const broadcast = ctx.sender.sent.filter((m) => m.text.includes('Сбор в 18:30'));
+    expect(broadcast).toHaveLength(2);
     const [blocked] = await ctx.db
       .select()
       .from(schema.users)

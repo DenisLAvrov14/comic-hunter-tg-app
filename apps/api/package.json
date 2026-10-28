@@ -15,6 +15,7 @@
     "@fastify/rate-limit": "^10.2.0",
     "@standup/db": "workspace:*",
     "@standup/domain": "workspace:*",
+    "@standup/notify": "workspace:*",
     "@standup/shared": "workspace:*",
     "fastify": "^5.2.0",
     "fastify-plugin": "^5.0.1",

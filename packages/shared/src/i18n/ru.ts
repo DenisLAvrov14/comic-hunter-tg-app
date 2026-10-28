@@ -10,12 +10,20 @@ export const ru = {
         'Mini App пока не настроен: задайте MINIAPP_URL (https) в переменных окружения.',
     },
     menuButton: 'Календарь',
+    commands: {
+      start: 'Открыть приложение',
+      today: 'Мои выступления сегодня',
+      settings: 'Настройки уведомлений',
+    },
+    notRegistered: 'Сначала откройте приложение и заполните профиль.',
+    openSettings: 'Открыть настройки',
+    conflict: 'Пересекается с другим выступлением — откройте приложение.',
   },
   app: {
     title: 'Stand Up Calendar',
     loading: 'Загрузка…',
     hello: (name: string) => `Привет, ${name}!`,
-    homeNote: 'Календарь и уведомления появятся на следующих этапах.',
+    homeNote: 'Календарь и автопринятие приглашений появятся на следующем этапе.',
     authError: 'Не удалось войти',
     back: 'Назад',
     save: 'Сохранить',
@@ -86,6 +94,7 @@ export const ru = {
       organizerProfile: 'Профиль организатора',
       venues: 'Площадки',
       roles: 'Мои роли',
+      notifications: 'Уведомления',
     },
     profile: {
       title: 'Профиль комика',
@@ -257,8 +266,8 @@ export const ru = {
       broadcast: 'Рассылка составу',
       broadcastPlaceholder: 'Текст сообщения всем, кто в составе',
       broadcastSend: 'Отправить',
-      broadcastResult: (sent: number, failed: number) =>
-        `Отправлено: ${sent}${failed ? `, не доставлено: ${failed} (не запускали бота)` : ''}`,
+      broadcastResult: (queued: number, skipped: number) =>
+        `Отправляется: ${queued}${skipped ? `, не дойдёт: ${skipped} (не запускали бота)` : ''}`,
       hosts: 'Ведущие',
       addHost: 'Назначить ведущего',
       hostSearch: 'Имя ведущего',
@@ -270,6 +279,23 @@ export const ru = {
         can_call_reserve: 'Звать резерв',
         can_notify_lineup: 'Рассылка составу',
       },
+    },
+    settings: {
+      title: 'Уведомления',
+      digestTime: 'Время дайджеста в день выступления',
+      digestHint: 'Бот пришлёт список выступлений на сегодня и попросит подтвердить участие.',
+      preShow: 'Напоминание перед выходом',
+      preShowOff: 'Не напоминать',
+      minutes: (n: number) => `За ${n} мин`,
+      botOff: 'Бот не может вам писать. Нажмите «Включить уведомления» или /start в боте.',
+    },
+    day: {
+      title: 'Сегодня выступаете?',
+      confirm: 'Подтверждаю участие',
+      decline: 'Не смогу',
+      confirmed: 'Участие подтверждено',
+      declined: 'Вы отметили, что не сможете. Организатор получил уведомление.',
+      declineConfirm: 'Точно не сможете? Организатор получит уведомление и позовёт замену.',
     },
     hosting: {
       title: 'Я веду',
@@ -306,6 +332,53 @@ export const ru = {
     item: (n: number, name: string, link: string | null) =>
       `${n}. ${name}${link ? ` — ${link}` : ''}`,
     conditions: 'Условия:',
+  },
+  // Уведомления бота (SPEC §7.2). Время — по таймзоне площадки.
+  notify: {
+    open: 'Открыть',
+    callReserve: 'Позвать резерв',
+    accept: '✅ Принять',
+    decline: 'Отказаться',
+    confirm: '✅ Прочитал, участие подтверждаю',
+    cantCome: '❌ Не смогу',
+    confirmOne: (title: string) => `✅ ${title}`,
+    cantComeOne: (title: string) => `❌ ${title}`,
+    gig: (
+      title: string,
+      venue: string,
+      time: string,
+      position: number | null,
+      stage: string | null,
+    ) =>
+      `🎤 ${title} — ${venue}, ${time}${position ? `\n   №${position} в составе${stage ? `, выход ~${stage}` : ''}` : ''}`,
+    digest: (gigs: string) => `Сегодня у вас выступления:\n\n${gigs}\n\nПодтвердите участие 👇`,
+    digestRepeat: (gigs: string) => `Напоминаем: подтвердите участие сегодня.\n\n${gigs}`,
+    noGigsToday: 'Сегодня выступлений нет.',
+    unconfirmed: (name: string, contact: string, gig: string) =>
+      `⚠️ Не подтвердил участие: ${name} (${contact})\n\n${gig}`,
+    withdrawal: (name: string, contact: string, gig: string) =>
+      `❗️ ${name} (${contact}) снял участие\n\n${gig}`,
+    preShow: (minutes: number, gig: string) => `⏰ Через ${minutes} мин ваш выход\n\n${gig}`,
+    invitation: (organizer: string, gig: string, message: string | null) =>
+      `📩 ${organizer} приглашает вас выступить\n\n${gig}${message ? `\n\n«${message}»` : ''}`,
+    applicationAccepted: (gig: string) => `🎉 Вы в составе!\n\n${gig}`,
+    applicationRejected: (gig: string) => `К сожалению, в этот раз не получилось.\n\n${gig}`,
+    movedToReserve: (gig: string) => `Вы в резерве. Если место освободится, мы напишем.\n\n${gig}`,
+    promoted: (gig: string) => `🎉 Место освободилось — вы в составе!\n\n${gig}`,
+    removed: (gig: string) => `Вас убрали из состава.\n\n${gig}`,
+    eventChanged: (gig: string) => `✏️ Изменения в событии:\n\n${gig}`,
+    eventCancelled: (gig: string) => `🚫 Событие отменено.\n\n${gig}`,
+    positionChanged: (gig: string) => `🔀 Порядок выхода изменился.\n\n${gig}`,
+    counterProposal: (name: string, text: string, gig: string) =>
+      `💬 ${name} предлагает: «${text}»\n\n${gig}`,
+    newApplications: (count: number, gig: string) => `📝 Новые заявки: ${count}\n\n${gig}`,
+    callbackDone: 'Готово',
+    callbackError: 'Не получилось — откройте приложение',
+    confirmedReply: 'Спасибо, участие подтверждено ✅',
+    declinedReply: 'Записали: вы не сможете. Организатор получит уведомление.',
+    reserveCalled: (n: number) =>
+      n > 0 ? `Позвали резервистов: ${n}` : 'Свободных резервистов нет',
+    settings: 'Настройки уведомлений',
   },
   messages: {
     broadcast: (title: string, text: string) => `📣 ${title}\n\n${text}`,

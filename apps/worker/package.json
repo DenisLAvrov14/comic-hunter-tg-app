@@ -11,7 +11,12 @@
   "dependencies": {
     "@standup/db": "workspace:*",
     "@standup/domain": "workspace:*",
+    "@standup/notify": "workspace:*",
+    "@standup/shared": "workspace:*",
+    "bullmq": "^5.81.5",
+    "ioredis": "^5.11.1",
     "pino": "^9.5.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "zod": "^3.25.76"
   }
 }

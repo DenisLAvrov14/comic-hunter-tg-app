@@ -17,8 +17,6 @@ import {
   searchHosts,
   updateParticipation,
   upsertStaff,
-  eq,
-  schema,
   type Db,
   type DbOrTx,
   type Event,
@@ -27,10 +25,10 @@ import { applyOrder, can, type EventAction } from '@standup/domain';
 import {
   AttendanceRequest,
   BroadcastRequest,
+  DayConfirmationRequest,
   LineupOrderRequest,
   ReplacementRequest,
   StaffPermissionsRequest,
-  ru,
   type BroadcastResponse,
   type EventSummary,
   type HostCandidate,
@@ -38,10 +36,14 @@ import {
   type MyParticipation,
   type PosterText,
 } from '@standup/shared';
-import type { Config } from '../config';
+import {
+  enqueueNow,
+  notifyDayConfirmation,
+  notifyPositionChanges,
+  rescheduleForEvent,
+} from '@standup/notify';
 import { ApiError } from '../errors';
-import type { MessageSender } from '../messaging';
-import { buildPosterText, posterDate } from '../poster';
+import { buildPosterText } from '../poster';
 import { eventResource, loadLineup, toEventSummary, toMyParticipation } from '../services/events';
 import type { FileStorage } from '../storage';
 
@@ -50,11 +52,9 @@ const StaffParams = z.object({ id: z.string().uuid(), userId: z.string().uuid() 
 const HostsQuery = z.object({ q: z.string().trim().max(64).optional() });
 
 export const lineupRoutes: FastifyPluginAsync<{
-  config: Config;
   db: Db;
   storage: FileStorage;
-  sender: MessageSender;
-}> = async (app, { config, db, storage, sender }) => {
+}> = async (app, { db, storage }) => {
   app.addHook('onRequest', app.authenticate);
 
   /** Проверка права на событии. Не видит событие — 404, видит без права — 403. */
@@ -78,27 +78,6 @@ export const lineupRoutes: FastifyPluginAsync<{
     return loadLineup(db, storage, row.event, row.venue.timezone);
   }
 
-  function eventLink(eventId: string): string | null {
-    if (!config.botUsername || !config.miniAppShortName) return null;
-    return `https://t.me/${config.botUsername}/${config.miniAppShortName}?startapp=e_${eventId}`;
-  }
-
-  /** Отправка пользователю; 403 от Telegram помечает его как заблокировавшего бота. */
-  async function sendTo(userId: string, text: string, eventId: string): Promise<boolean> {
-    const user = await findUserById(db, userId);
-    if (!user || !user.botStarted || user.botBlocked) return false;
-    const link = eventLink(eventId);
-    const result = await sender.send({
-      chatId: user.telegramId,
-      text,
-      ...(link ? { button: { text: ru.messages.openEvent, url: link } } : {}),
-    });
-    if (result === 'blocked') {
-      await db.update(schema.users).set({ botBlocked: true }).where(eq(schema.users.id, userId));
-    }
-    return result === 'ok';
-  }
-
   // --- Порядок выхода ---
 
   app.patch('/events/:id/lineup/order', async (req): Promise<Lineup> => {
@@ -119,12 +98,15 @@ export const lineupRoutes: FastifyPluginAsync<{
       );
       if (!res.ok)
         throw new ApiError('VERSION_MISMATCH', undefined, { version: event.lineupVersion });
-      for (const p of accepted) {
-        const position = res.positions.get(p.id)!;
-        if (p.position !== position) await updateParticipation(tx, p.id, { position });
+      const changed = accepted.filter((p) => p.position !== res.positions.get(p.id));
+      for (const p of changed) {
+        await updateParticipation(tx, p.id, { position: res.positions.get(p.id)! });
       }
       await bumpLineupVersion(tx, id);
-      // TODO(stage 6): lineup_position_changed участникам, пересчёт напоминаний перед выходом.
+      const now = new Date();
+      await notifyPositionChanges(tx, id, changed, now);
+      // Время выхода сдвинулось — напоминания перед выходом пересчитываются.
+      await rescheduleForEvent(tx, id, now);
     });
     return lineupOf(id);
   });
@@ -143,46 +125,90 @@ export const lineupRoutes: FastifyPluginAsync<{
 
   // --- Замена из резерва ---
 
-  app.post('/events/:id/replacement', async (req): Promise<Lineup> => {
-    const { id } = IdParams.parse(req.params);
-    const body = ReplacementRequest.parse(req.body);
-    const called = await db.transaction(async (tx) => {
-      const event = await authorize(tx, await lockEvent(tx, id), req.user.sub, 'reserve.call');
+  /** Срочно зовёт резервистов на место выбывшего; первый согласившийся займёт позицию. */
+  async function callReplacement(
+    userId: string,
+    id: string,
+    droppedId: string,
+    pick: (reserveIds: string[]) => Promise<string[]> | string[],
+  ): Promise<number> {
+    return db.transaction(async (tx) => {
+      const event = await authorize(tx, await lockEvent(tx, id), userId, 'reserve.call');
       if (event.status === 'cancelled' || event.status === 'finished') {
         throw new ApiError('INVALID_TRANSITION', 'Событие завершено или отменено');
       }
       const all = await listEventParticipations(tx, id);
-      const dropped = all.find((p) => p.id === body.participationId);
+      const dropped = all.find((p) => p.id === droppedId);
       if (!dropped || !['accepted', 'withdrawn', 'removed'].includes(dropped.status)) {
         throw new ApiError('VALIDATION', 'Выбывший участник не найден', {
           field: 'participationId',
         });
       }
-      const reserves = all.filter((p) => body.reserveIds.includes(p.id) && p.status === 'reserve');
-      if (reserves.length === 0) {
-        throw new ApiError('VALIDATION', 'Резервисты не найдены', { field: 'reserveIds' });
-      }
+      const chosen = await pick(all.filter((p) => p.status === 'reserve').map((p) => p.id));
+      const reserves = all.filter((p) => chosen.includes(p.id) && p.status === 'reserve');
+      if (reserves.length === 0) return 0;
       for (const r of reserves) {
         await updateParticipation(tx, r.id, { isUrgent: true, replacementFor: dropped.id });
         await recordParticipationEvent(tx, {
           participationId: r.id,
-          actorId: req.user.sub,
+          actorId: userId,
           fromStatus: 'reserve',
           toStatus: 'reserve',
           payload: { action: 'call_replacement', replacementFor: dropped.id },
         });
       }
-      return reserves;
+      await enqueueNow(
+        tx,
+        reserves.map((r) => ({
+          userId: r.comedianId,
+          kind: 'replacement_request' as const,
+          participationId: r.id,
+          eventId: id,
+        })),
+        new Date(),
+      );
+      return reserves.length;
     });
+  }
 
-    const row = (await findEventWithRefs(db, id))!;
-    const text = ru.messages.replacement(
-      row.event.title,
-      posterDate(row.event.startsAt, row.venue.timezone),
-      row.venue.name,
-    );
-    for (const r of called) await sendTo(r.comedianId, text, id);
+  app.post('/events/:id/replacement', async (req): Promise<Lineup> => {
+    const { id } = IdParams.parse(req.params);
+    const body = ReplacementRequest.parse(req.body);
+    const n = await callReplacement(req.user.sub, id, body.participationId, () => body.reserveIds);
+    if (n === 0) throw new ApiError('VALIDATION', 'Резервисты не найдены', { field: 'reserveIds' });
     return lineupOf(id);
+  });
+
+  // Кнопка «Позвать резерв» в уведомлении: зовём всех резервистов без пересечений.
+  app.post('/participations/:id/call-reserve', async (req): Promise<{ called: number }> => {
+    const { id } = IdParams.parse(req.params);
+    const p = await findParticipation(db, id);
+    if (!p) throw new ApiError('NOT_FOUND');
+    const called = await callReplacement(req.user.sub, p.eventId, id, async () => {
+      const lineup = await lineupOf(p.eventId);
+      return lineup.reserve.filter((r) => r.conflicts.length === 0).map((r) => r.id);
+    });
+    return { called };
+  });
+
+  // --- Подтверждение в день выступления ---
+
+  app.post('/participations/:id/day-confirmation', async (req): Promise<MyParticipation> => {
+    const { id } = IdParams.parse(req.params);
+    const { value } = DayConfirmationRequest.parse(req.body);
+    const updated = await db.transaction(async (tx) => {
+      const p = await findParticipation(tx, id);
+      if (!p || p.comedianId !== req.user.sub) throw new ApiError('NOT_FOUND');
+      if (p.status !== 'accepted') throw new ApiError('INVALID_TRANSITION');
+      const event = (await findEvent(tx, p.eventId))!;
+      const next = await updateParticipation(tx, id, {
+        dayConfirmation: value,
+        dayConfirmedAt: new Date(),
+      });
+      if (p.dayConfirmation !== value) await notifyDayConfirmation(tx, next, event, new Date());
+      return next;
+    });
+    return toMyParticipation(updated);
   });
 
   // --- Рассылка составу ---
@@ -193,15 +219,24 @@ export const lineupRoutes: FastifyPluginAsync<{
     async (req): Promise<BroadcastResponse> => {
       const { id } = IdParams.parse(req.params);
       const { text } = BroadcastRequest.parse(req.body);
-      const event = await authorize(db, await findEvent(db, id), req.user.sub, 'lineup.notify');
+      await authorize(db, await findEvent(db, id), req.user.sub, 'lineup.notify');
       const accepted = (await listEventParticipations(db, id)).filter(
         (p) => p.status === 'accepted',
       );
-      let sent = 0;
-      for (const p of accepted) {
-        if (await sendTo(p.comedianId, ru.messages.broadcast(event.title, text), id)) sent++;
-      }
-      return { sent, failed: accepted.length - sent };
+      const users = await Promise.all(accepted.map((p) => findUserById(db, p.comedianId)));
+      const reachable = accepted.filter((_, i) => users[i]?.botStarted && !users[i]?.botBlocked);
+      await enqueueNow(
+        db,
+        reachable.map((p) => ({
+          userId: p.comedianId,
+          kind: 'broadcast' as const,
+          participationId: p.id,
+          eventId: id,
+          payload: { text },
+        })),
+        new Date(),
+      );
+      return { queued: reachable.length, skipped: accepted.length - reachable.length };
     },
   );
 

@@ -4,7 +4,6 @@ import { createDb, eq, runMigrations, schema, syncCities } from '@standup/db';
 import { buildApp } from './app';
 import { signInitData } from './auth/initData';
 import type { Config } from './config';
-import { MemorySender } from './messaging';
 import { MemoryStorage } from './storage';
 
 // Интеграционный тест против реального Postgres: TEST_DATABASE_URL=postgres://... pnpm test
@@ -18,6 +17,7 @@ const config: Config = {
   databaseUrl: url ?? '',
   botUsername: '',
   miniAppShortName: '',
+  internalToken: '',
   botToken: BOT_TOKEN,
   jwtSecret: 'x'.repeat(32),
   devAuth: false,
@@ -51,7 +51,7 @@ describe.skipIf(!url)('API auth (Postgres)', () => {
   beforeAll(async () => {
     await runMigrations(db);
     await db.delete(schema.users).where(eq(schema.users.telegramId, telegramId));
-    app = await buildApp({ config, db, storage: new MemoryStorage(), sender: new MemorySender() });
+    app = await buildApp({ config, db, storage: new MemoryStorage() });
   });
 
   afterAll(async () => {
@@ -172,7 +172,7 @@ describe.skipIf(!url)('API профили и справочники (Postgres)',
     await runMigrations(db);
     await syncCities(db);
     await db.delete(schema.users).where(eq(schema.users.telegramId, telegramId));
-    app = await buildApp({ config, db, storage, sender: new MemorySender() });
+    app = await buildApp({ config, db, storage });
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/telegram',

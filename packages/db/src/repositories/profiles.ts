@@ -26,7 +26,12 @@ export async function setUserRoles(db: Db, userId: string, roles: Role[]) {
 export async function updateUser(
   db: Db,
   userId: string,
-  patch: { timezone?: string; botStarted?: boolean },
+  patch: {
+    timezone?: string;
+    botStarted?: boolean;
+    digestTime?: string;
+    preShowMinutes?: number | null;
+  },
 ) {
   if (Object.keys(patch).length === 0) return;
   await db

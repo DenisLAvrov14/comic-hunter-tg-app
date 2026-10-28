@@ -44,6 +44,8 @@ export async function loadMe(db: Db, storage: FileStorage, userOrId: User | stri
     languageCode: user.languageCode,
     timezone: user.timezone,
     botStarted: user.botStarted,
+    digestTime: user.digestTime,
+    preShowMinutes: user.preShowMinutes,
     roles,
     comedianProfile: comedian
       ? {

@@ -3,7 +3,7 @@ import { createDb, runMigrations, syncCities, type Db } from '@standup/db';
 import { buildApp } from './app';
 import { signInitData } from './auth/initData';
 import type { Config } from './config';
-import { MemorySender } from './messaging';
+import { MemorySender, runDueOnce } from '@standup/notify';
 import { MemoryStorage } from './storage';
 
 export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -16,6 +16,7 @@ export const testConfig: Config = {
   databaseUrl: TEST_DATABASE_URL ?? '',
   botUsername: '',
   miniAppShortName: '',
+  internalToken: 'test-internal-token',
   botToken: TEST_BOT_TOKEN,
   jwtSecret: 'x'.repeat(32),
   devAuth: false,
@@ -58,17 +59,25 @@ export async function setupTestApp(): Promise<{
   app: App;
   db: Db;
   sender: MemorySender;
+  /** Отправить созревшие уведомления на момент `now` (подмена времени в тестах). */
+  deliver: (now?: Date) => Promise<Record<string, number>>;
   close: () => Promise<void>;
 }> {
   const { db, close } = createDb(TEST_DATABASE_URL ?? 'postgres://unused');
   await runMigrations(db);
   await syncCities(db);
   const sender = new MemorySender();
-  const app = await buildApp({ config: testConfig, db, storage: new MemoryStorage(), sender });
+  const app = await buildApp({ config: testConfig, db, storage: new MemoryStorage() });
   return {
     app,
     db,
     sender,
+    deliver: (now = new Date()) =>
+      runDueOnce(db, {
+        sender,
+        links: { botUsername: 'bot', miniAppShortName: 'app' },
+        now: () => now,
+      }),
     close: async () => {
       await app.close();
       await close();

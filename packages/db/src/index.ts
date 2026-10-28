@@ -12,6 +12,7 @@ export type {
   Participation,
   EventStaff,
   BusySlot,
+  ScheduledNotification,
 } from './schema';
 export * from './repositories/users';
 export * from './repositories/profiles';

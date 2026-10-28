@@ -263,7 +263,8 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     const history = await db
       .select()
       .from(schema.participationEvents)
-      .where(eq(schema.participationEvents.participationId, p.id));
+      .where(eq(schema.participationEvents.participationId, p.id))
+      .orderBy(schema.participationEvents.createdAt);
     expect(history.map((h) => h.toStatus)).toEqual(['invited', 'counter_proposed', 'declined']);
   });
 

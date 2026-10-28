@@ -295,7 +295,15 @@ export type ReplacementRequest = z.infer<typeof ReplacementRequest>;
 export const BroadcastRequest = z.object({ text: z.string().trim().min(1).max(2000) });
 export type BroadcastRequest = z.infer<typeof BroadcastRequest>;
 
-export const BroadcastResponse = z.object({ sent: z.number().int(), failed: z.number().int() });
+export const BroadcastResponse = z.object({
+  /** Поставлено в очередь отправки. */
+  queued: z.number().int(),
+  /** Не запускали бота или заблокировали его — не дойдёт. */
+  skipped: z.number().int(),
+});
+
+export const DayConfirmationRequest = z.object({ value: z.enum(['confirmed', 'declined']) });
+export type DayConfirmationRequest = z.infer<typeof DayConfirmationRequest>;
 export type BroadcastResponse = z.infer<typeof BroadcastResponse>;
 
 export const PosterText = z.object({ text: z.string() });

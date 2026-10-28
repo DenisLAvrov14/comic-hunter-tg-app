@@ -3,6 +3,7 @@ import {
   dedupeKey,
   isValidTime,
   localDate,
+  noticesForTransition,
   planDayNotifications,
   retryDelayMs,
   zonedDateTime,
@@ -182,5 +183,43 @@ describe('retryDelayMs', () => {
     expect(retryDelayMs(3)).toBe(20_000);
     expect(retryDelayMs(20)).toBe(600_000);
     expect(retryDelayMs(0)).toBe(5_000);
+  });
+});
+
+describe('noticesForTransition', () => {
+  const n = (
+    from: Parameters<typeof noticesForTransition>[0]['from'],
+    to: Parameters<typeof noticesForTransition>[0]['to'],
+    action: Parameters<typeof noticesForTransition>[0]['action'],
+    actor: 'comedian' | 'organizer',
+  ) => noticesForTransition({ from, to, action, actor }).map((x) => `${x.kind}→${x.audience}`);
+
+  it.each([
+    [null, 'pending', 'apply', 'comedian', ['new_application→organizer']],
+    [null, 'invited', 'invite', 'organizer', ['invitation_received→comedian']],
+    ['pending', 'accepted', 'accept', 'organizer', ['application_accepted→comedian']],
+    ['pending', 'rejected', 'reject', 'organizer', ['application_rejected→comedian']],
+    ['pending', 'reserve', 'reserve', 'organizer', ['moved_to_reserve→comedian']],
+    ['accepted', 'reserve', 'reserve', 'organizer', ['moved_to_reserve→comedian']],
+    ['reserve', 'accepted', 'promote', 'organizer', ['promoted_from_reserve→comedian']],
+    ['accepted', 'removed', 'remove', 'organizer', ['removed_from_lineup→comedian']],
+    ['counter_proposed', 'accepted', 'accept', 'organizer', ['application_accepted→comedian']],
+    ['counter_proposed', 'declined', 'reject', 'organizer', ['application_rejected→comedian']],
+    [
+      'invited',
+      'counter_proposed',
+      'counter_propose',
+      'comedian',
+      ['counter_proposal_received→organizer'],
+    ],
+    ['accepted', 'withdrawn', 'withdraw', 'comedian', ['withdrawal_alert→event_staff']],
+    // Реакции самого комика без последствий для состава — без уведомлений.
+    ['invited', 'accepted', 'accept', 'comedian', []],
+    ['invited', 'declined', 'decline', 'comedian', []],
+    ['pending', 'withdrawn', 'withdraw', 'comedian', []],
+    ['reserve', 'accepted', 'accept', 'comedian', []],
+    ['pending', 'pending', 'accept', 'organizer', []],
+  ] as const)('%s → %s (%s, %s)', (from, to, action, actor, expected) => {
+    expect(n(from, to, action, actor)).toEqual(expected);
   });
 });

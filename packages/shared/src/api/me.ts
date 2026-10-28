@@ -14,6 +14,10 @@ export const Me = z.object({
   languageCode: z.string().nullable(),
   timezone: z.string(),
   botStarted: z.boolean(),
+  /** Время дайджеста «HH:mm» по таймзоне пользователя. */
+  digestTime: z.string(),
+  /** За сколько минут до выхода напомнить; null — выключено. */
+  preShowMinutes: z.number().int().nullable(),
   roles: z.array(UserRole),
   comedianProfile: ComedianProfile.nullable(),
   organizerProfile: OrganizerProfile.nullable(),
@@ -39,6 +43,11 @@ export const PatchMeRequest = z.object({
       }
     }, 'Неизвестная таймзона')
     .optional(),
+  digestTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Формат времени: ЧЧ:ММ')
+    .optional(),
+  preShowMinutes: z.number().int().min(5).max(240).nullable().optional(),
   /** Пользователь разрешил боту писать ему (requestWriteAccess в Mini App). */
   writeAccessGranted: z.literal(true).optional(),
 });

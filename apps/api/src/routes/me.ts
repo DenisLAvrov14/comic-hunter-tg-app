@@ -23,6 +23,7 @@ import {
   type Me,
   type Photo,
 } from '@standup/shared';
+import { rescheduleForUser } from '@standup/notify';
 import { ApiError } from '../errors';
 import { processPhoto, UnsupportedImageError } from '../images';
 import { loadMe, toPhoto } from '../services/me';
@@ -53,7 +54,12 @@ export const meRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = as
     await updateUser(db, req.user.sub, {
       ...(body.timezone ? { timezone: body.timezone } : {}),
       ...(body.writeAccessGranted ? { botStarted: true } : {}),
+      ...(body.digestTime ? { digestTime: body.digestTime } : {}),
+      ...(body.preShowMinutes !== undefined ? { preShowMinutes: body.preShowMinutes } : {}),
     });
+    if (body.digestTime || body.preShowMinutes !== undefined || body.timezone) {
+      await rescheduleForUser(db, req.user.sub, new Date());
+    }
     return loadMe(db, storage, req.user.sub);
   });
 

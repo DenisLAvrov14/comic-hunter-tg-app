@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@standup/db": "workspace:*",
+    "@standup/domain": "workspace:*",
+    "@standup/notify": "workspace:*",
     "@standup/shared": "workspace:*",
     "grammy": "^1.30.0",
     "pino": "^9.5.0",

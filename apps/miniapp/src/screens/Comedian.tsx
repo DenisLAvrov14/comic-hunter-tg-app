@@ -161,6 +161,9 @@ function EventBody({
             {t.participationStatuses[mine.status]}
             {mine.position ? ` · ${t.events.position(mine.position)}` : ''}
           </p>
+          {mine.status === 'accepted' && isSoon(event.startsAt) && (
+            <DayConfirmation participationId={mine.id} queryKey={queryKey} />
+          )}
           {['pending', 'invited', 'counter_proposed', 'accepted', 'reserve'].includes(
             mine.status,
           ) && (
@@ -218,6 +221,52 @@ function EventBody({
       )}
       {apply.isSuccess && <p className="success">{t.events.applied}</p>}
     </>
+  );
+}
+
+/** Подтверждение показываем за сутки до начала — как дайджест в день выступления. */
+function isSoon(startsAt: string) {
+  const ms = new Date(startsAt).getTime() - Date.now();
+  return ms > -3 * 3_600_000 && ms < 24 * 3_600_000;
+}
+
+function DayConfirmation({
+  participationId,
+  queryKey,
+}: {
+  participationId: string;
+  queryKey: string[];
+}) {
+  const queryClient = useQueryClient();
+  const [result, setResult] = useState<'confirmed' | 'declined' | null>(null);
+  const answer = useMutation({
+    mutationFn: (value: 'confirmed' | 'declined') => api.dayConfirmation(participationId, value),
+    onSuccess: (_, value) => {
+      setResult(value);
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+  if (result) return <p className="success">{t.day[result]}</p>;
+  return (
+    <div className="stack">
+      <strong>{t.day.title}</strong>
+      <div className="row wrap">
+        <button disabled={answer.isPending} onClick={() => answer.mutate('confirmed')}>
+          {t.day.confirm}
+        </button>
+        <button
+          className="secondary danger-text"
+          disabled={answer.isPending}
+          onClick={() => {
+            if (window.confirm(t.day.declineConfirm)) answer.mutate('declined');
+          }}
+        >
+          {t.day.decline}
+        </button>
+      </div>
+      <ErrorText error={answer.error} />
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 // Расписание уведомлений дня выступления (SPEC §6.4). Чистые функции: время «сейчас»
 // передаётся параметром, таймзоны — через date-fns-tz.
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import type { ParticipationAction, ParticipationActor, ParticipationStatus } from './participation';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -24,6 +25,7 @@ export const notificationKinds = [
   'replacement_request',
   'counter_proposal_received',
   'new_application',
+  'broadcast',
 ] as const;
 export type NotificationKind = (typeof notificationKinds)[number];
 
@@ -143,4 +145,50 @@ export function dedupeKey(
 /** Ретраи отправки: экспоненциальная пауза с потолком. */
 export function retryDelayMs(attempt: number, baseMs = 5_000, maxMs = 10 * MINUTE): number {
   return Math.min(baseMs * 2 ** Math.max(0, attempt - 1), maxMs);
+}
+
+export interface TransitionNotice {
+  kind: NotificationKind;
+  /** comedian — участнику; organizer — организатору; event_staff — организатору и ведущим. */
+  audience: 'comedian' | 'organizer' | 'event_staff';
+}
+
+/**
+ * Уведомления, которые порождает переход участия (SPEC §4: «каждый переход порождает
+ * уведомление»). Реакции самого получателя (комик принял приглашение) не уведомляются.
+ */
+export function noticesForTransition(t: {
+  from: ParticipationStatus | null;
+  to: ParticipationStatus;
+  action: ParticipationAction | 'apply' | 'invite';
+  actor: ParticipationActor;
+}): TransitionNotice[] {
+  const toComedian = (kind: NotificationKind): TransitionNotice[] => [
+    { kind, audience: 'comedian' },
+  ];
+  if (t.action === 'apply') return [{ kind: 'new_application', audience: 'organizer' }];
+  if (t.action === 'invite') return toComedian('invitation_received');
+
+  if (t.actor === 'organizer') {
+    switch (t.to) {
+      case 'accepted':
+        return toComedian(t.from === 'reserve' ? 'promoted_from_reserve' : 'application_accepted');
+      case 'rejected':
+      case 'declined':
+        return toComedian('application_rejected');
+      case 'reserve':
+        return toComedian('moved_to_reserve');
+      case 'removed':
+        // Отозванное приглашение — тоже «убран из состава»: событие для комика закрыто.
+        return toComedian('removed_from_lineup');
+      default:
+        return [];
+    }
+  }
+  if (t.to === 'counter_proposed')
+    return [{ kind: 'counter_proposal_received', audience: 'organizer' }];
+  if (t.to === 'withdrawn' && t.from === 'accepted') {
+    return [{ kind: 'withdrawal_alert', audience: 'event_staff' }];
+  }
+  return [];
 }

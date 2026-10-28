@@ -47,6 +47,7 @@ import {
   type Lineup,
   type MyParticipation,
 } from '@standup/shared';
+import { notifyEventParticipants, notifyTransition, rescheduleForEvent } from '@standup/notify';
 import { ApiError } from '../errors';
 import {
   eventResource,
@@ -224,8 +225,13 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
         showLineup: body.showLineup,
         status: body.status,
       });
-      // TODO(stage 6): rescheduleForEvent, повторная проверка пересечений у состава и
-      // уведомление event_changed при смене времени или площадки.
+      const now = new Date();
+      await rescheduleForEvent(tx, id, now);
+      if (startsAt.getTime() !== event.startsAt.getTime() || venue.id !== event.venueId) {
+        await notifyEventParticipants(tx, event, 'event_changed', now);
+      }
+      // TODO(spec): ТЗ §6.1 — после переноса заново проверить пересечения у состава и
+      // уведомить организатора о новых. Пока организатор видит их только в составе.
     });
     return loadEventDetails(db, req.user.sub, id);
   });
@@ -233,8 +239,12 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
   app.post('/events/:id/cancel', async (req): Promise<EventDetails> => {
     const { id } = IdParams.parse(req.params);
     const event = await eventFor(req.user.sub, id, 'event.edit');
-    if (event.status !== 'cancelled') await updateEvent(db, id, { status: 'cancelled' });
-    // TODO(stage 6): event_cancelled участникам, отмена pending-уведомлений.
+    if (event.status !== 'cancelled') {
+      await db.transaction(async (tx) => {
+        await updateEvent(tx, id, { status: 'cancelled' });
+        await notifyEventParticipants(tx, event, 'event_cancelled', new Date());
+      });
+    }
     return loadEventDetails(db, req.user.sub, id);
   });
 
@@ -313,7 +323,11 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
         toStatus: p.status,
         payload: { action: 'apply', source },
       });
-      // TODO(stage 6): new_application организатору (не чаще раза в 15 минут на событие).
+      await notifyTransition(
+        tx,
+        { participation: p, event, from: previousStatus, action: 'apply', actor: 'comedian' },
+        new Date(),
+      );
       return p;
     });
     reply.status(201);
@@ -364,7 +378,12 @@ export const eventRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> =
           toStatus: p.status,
           payload: { action: 'invite' },
         });
-        // TODO(stage 7): автопринятие по auto_accept_rules. TODO(stage 6): invitation_received.
+        // TODO(stage 7): автопринятие по auto_accept_rules.
+        await notifyTransition(
+          tx,
+          { participation: p, event, from: previousStatus, action: 'invite', actor: 'organizer' },
+          new Date(),
+        );
         invited.push(comedianId);
       }
       return { invited, skipped };

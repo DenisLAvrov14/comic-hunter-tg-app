@@ -40,6 +40,11 @@ export async function findUserById(db: Db, id: string): Promise<User | undefined
   return row;
 }
 
+export async function findUserByTelegramId(db: Db, telegramId: number): Promise<User | undefined> {
+  const [row] = await db.select().from(users).where(eq(users.telegramId, telegramId));
+  return row;
+}
+
 export async function getUserRoles(db: Db, userId: string) {
   const rows = await db
     .select({ role: userRoles.role })

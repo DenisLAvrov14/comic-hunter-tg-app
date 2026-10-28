@@ -29,6 +29,13 @@
       "when": 1793198400404,
       "tag": "0003_curved_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793199130313,
+      "tag": "0004_harsh_spectrum",
+      "breakpoints": true
     }
   ]
 }

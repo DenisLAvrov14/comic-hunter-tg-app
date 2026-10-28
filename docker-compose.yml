@@ -58,6 +58,7 @@ services:
       DEV_AUTH: ${DEV_AUTH:-true}
       BOT_USERNAME: ${BOT_USERNAME:-}
       MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:-}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: ${S3_BUCKET:-standup}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
@@ -82,6 +83,8 @@ services:
       MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:-}
       MINIAPP_URL: ${MINIAPP_URL:-}
       BOT_MODE: ${BOT_MODE:-polling}
+      API_INTERNAL_URL: http://api:3000
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
@@ -90,7 +93,11 @@ services:
     image: localhost/standup-calendar-node:dev
     build: { context: ., target: node-app }
     command: pnpm --filter @standup/worker start
-    environment: *node-env
+    environment:
+      <<: *node-env
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      BOT_USERNAME: ${BOT_USERNAME:-}
+      MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:-}
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

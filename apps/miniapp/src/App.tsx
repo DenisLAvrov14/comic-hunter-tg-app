@@ -7,6 +7,7 @@ import { Onboarding } from './screens/Onboarding';
 import { HostingScreen, LineupScreen } from './screens/Lineup';
 import { EventFormScreen, InviteScreen, MyEventsScreen } from './screens/Organizer';
 import { ComedianProfileScreen, OrganizerProfileScreen, RolesScreen } from './screens/Profiles';
+import { SettingsScreen } from './screens/Settings';
 import { VenuesScreen } from './screens/Venues';
 
 const t = ru.app;
@@ -34,6 +35,7 @@ function Home() {
           </>
         )}
         {me.roles.includes('host') && <Link to="/hosting">{t.nav.hosting}</Link>}
+        <Link to="/settings">{t.menu.notifications}</Link>
         <Link to="/roles">{t.menu.roles}</Link>
       </nav>
     </div>
@@ -76,6 +78,7 @@ function AuthenticatedRoutes() {
       <Route path="/organizer" element={<OrganizerProfileScreen />} />
       <Route path="/venues" element={<VenuesScreen />} />
       <Route path="/roles" element={<RolesScreen />} />
+      <Route path="/settings" element={<SettingsScreen />} />
       <Route path="/open" element={<OpenEventsScreen />} />
       <Route path="/inbox" element={<InboxScreen />} />
       <Route path="/join/:token" element={<EventScreen />} />

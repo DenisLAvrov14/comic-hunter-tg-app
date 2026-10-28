@@ -2,6 +2,7 @@ import type {
   ApiErrorBody,
   AuthConfigResponse,
   AuthResponse,
+  BroadcastResponse,
   City,
   ComedianBrief,
   ComedianCard,
@@ -127,7 +128,11 @@ export const api = {
   replacement: (id: string, participationId: string, reserveIds: string[]) =>
     request<Lineup>('POST', `/events/${id}/replacement`, { participationId, reserveIds }),
   broadcast: (id: string, text: string) =>
-    request<{ sent: number; failed: number }>('POST', `/events/${id}/broadcast`, { text }),
+    request<BroadcastResponse>('POST', `/events/${id}/broadcast`, { text }),
+  dayConfirmation: (participationId: string, value: 'confirmed' | 'declined') =>
+    request<MyParticipation>('POST', `/participations/${participationId}/day-confirmation`, {
+      value,
+    }),
   posterText: (id: string) => request<{ text: string }>('GET', `/events/${id}/poster-text`),
   hosts: (q: string) => request<HostCandidate[]>('GET', `/hosts?${query({ q })}`),
   putStaff: (id: string, userId: string, permissions: StaffPermissionsRequest['permissions']) =>
