@@ -1,6 +1,5 @@
-{
-	email {$ACME_EMAIL}
-}
+# Почта для Let's Encrypt не обязательна; чтобы получать предупреждения о сертификате,
+# добавьте в начало файла блок: { email you@example.com }
 
 {$DOMAIN} {
 	encode zstd gzip
