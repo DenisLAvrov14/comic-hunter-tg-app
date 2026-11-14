@@ -271,11 +271,47 @@ button:disabled {
   cursor: default;
 }
 
-/* Вторичная кнопка: тонкая сплошная рамка, без пунктира. */
-button.secondary {
-  background: transparent;
-  color: var(--link);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hint) 55%, transparent);
+/* Вторичная кнопка — «тональная», как в Telegram: заливка в цвете кнопки темы,
+   чтобы она читалась как кнопка, а не как рамка на фоне. */
+button.secondary,
+button.outline,
+.button-link.secondary {
+  --tone: var(--button);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 22%, transparent);
+}
+
+button.secondary.danger-text,
+button.outline.danger-text {
+  --tone: var(--danger);
+}
+
+/* Отклик: наведение на компьютере, нажатие везде. */
+@media (hover: hover) {
+  button:not(:disabled):hover,
+  .button-link:hover {
+    filter: brightness(1.06);
+  }
+  button.secondary:not(:disabled):hover,
+  button.outline:not(:disabled):hover,
+  .button-link.secondary:hover {
+    filter: none;
+    background: color-mix(in srgb, var(--tone) 22%, transparent);
+  }
+}
+
+button:not(:disabled):active,
+.button-link:active {
+  transform: scale(0.98);
+}
+
+button,
+.button-link {
+  transition:
+    background-color 0.15s,
+    filter 0.15s,
+    transform 0.08s;
 }
 
 /* Компактная кнопка по размеру текста — рядом с именем в строке. */
@@ -503,12 +539,6 @@ nav.list > a::after {
 
 .row .button-link {
   flex: 1;
-}
-
-.button-link.secondary {
-  background: transparent;
-  color: var(--link);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hint) 55%, transparent);
 }
 
 button.danger {
@@ -1067,12 +1097,6 @@ a.chip {
   border-radius: 10px;
   /* Длинная подпись переносится, соседние кнопки растягиваются до той же высоты. */
   overflow-wrap: anywhere;
-}
-
-button.outline {
-  background: transparent;
-  color: var(--link);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hint) 55%, transparent);
 }
 
 .card.invitation {
