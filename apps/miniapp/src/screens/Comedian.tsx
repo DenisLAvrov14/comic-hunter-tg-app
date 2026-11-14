@@ -2,74 +2,96 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  eventFormats,
   ru,
+  selectableEventFormats,
   type EventDetails,
   type EventFormat,
   type InboxItem,
+  type MyParticipation,
 } from '@standup/shared';
 import { api } from '../api';
 import { useMe } from '../auth';
-import { ActionError, ConflictPrompt, EventCard, useParticipationAction } from '../events-ui';
+import {
+  ActionError,
+  ConflictPrompt,
+  EventCard,
+  HostAnswer,
+  useParticipationAction,
+} from '../events-ui';
 import { formatDateTime } from '../format';
 import { haptic } from '../telegram';
-import { BackButton, ErrorText, MainButton, Screen, TextField } from '../ui';
+import {
+  BackButton,
+  CitySelect,
+  ErrorText,
+  MainButton,
+  MissingText,
+  Screen,
+  TextField,
+  useCities,
+  useRequired,
+} from '../ui';
 
 const t = ru.app;
 
 export function OpenEventsScreen() {
   const { me } = useMe();
-  const cityId = me.comedianProfile?.cityId ?? me.organizerProfile?.cityId ?? null;
+  const { data: cities = [] } = useCities();
+  // Город профиля — только значение по умолчанию: комик ищет и в других городах и странах.
+  const [city, setCity] = useState<number | null>(
+    me.comedianProfile?.cityId ?? me.organizerProfile?.cityId ?? null,
+  );
   const [format, setFormat] = useState<EventFormat | ''>('');
   const [from, setFrom] = useState('');
   const { data, error, isPending } = useQuery({
-    queryKey: ['events', 'open', cityId, format, from],
+    queryKey: ['events', 'open', city, format, from],
     queryFn: () =>
       api.openEvents({
-        city: cityId!,
+        city: city ?? undefined,
         format: format || undefined,
         from: from ? new Date(`${from}T00:00`).toISOString() : undefined,
       }),
-    enabled: cityId !== null,
   });
+  const cityName = (id: number) => (city ? undefined : cities.find((c) => c.id === id)?.name);
 
   return (
-    <Screen title={t.nav.open} back={<BackButton to="/" />}>
-      {cityId === null ? (
-        <p className="hint">{t.events.needCity}</p>
+    <Screen title={t.nav.open}>
+      <CitySelect
+        label={t.events.area}
+        value={city}
+        onChange={setCity}
+        anyLabel={t.events.anyCity}
+        onAny={() => setCity(null)}
+      />
+      <div className="fields">
+        <label>
+          {t.eventForm.format}
+          <select value={format} onChange={(e) => setFormat(e.target.value as EventFormat | '')}>
+            <option value="">{t.events.allFormats}</option>
+            {selectableEventFormats.map((f) => (
+              <option key={f} value={f}>
+                {t.formats[f]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t.events.fromDate}
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+      </div>
+      {isPending ? (
+        <p className="hint">{t.loading}</p>
+      ) : error ? (
+        <ErrorText error={error} />
+      ) : data.length === 0 ? (
+        <p className="hint">{t.events.emptyOpen}</p>
       ) : (
-        <>
-          <div className="row">
-            <select value={format} onChange={(e) => setFormat(e.target.value as EventFormat | '')}>
-              <option value="">{t.events.allFormats}</option>
-              {eventFormats.map((f) => (
-                <option key={f} value={f}>
-                  {t.formats[f]}
-                </option>
-              ))}
-            </select>
-            <input
-              className="grow"
-              type="date"
-              aria-label={t.events.fromDate}
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            />
-          </div>
-          {isPending ? (
-            <p className="hint">{t.loading}</p>
-          ) : error ? (
-            <ErrorText error={error} />
-          ) : data.length === 0 ? (
-            <p className="hint">{t.events.emptyOpen}</p>
-          ) : (
-            <div className="list">
-              {data.map((e) => (
-                <EventCard key={e.id} e={e} to={`/events/${e.id}`} />
-              ))}
-            </div>
-          )}
-        </>
+        <div className="list">
+          {data.map((e) => (
+            <EventCard key={e.id} e={e} to={`/events/${e.id}`} city={cityName(e.venue.cityId)} />
+          ))}
+        </div>
       )}
     </Screen>
   );
@@ -89,7 +111,7 @@ export function EventScreen() {
   });
 
   return (
-    <Screen title={event?.title ?? ''} back={<BackButton to="/" />}>
+    <Screen title={event?.title ?? ''} back={<BackButton fallback="/" />}>
       {isPending ? (
         <p className="hint">{t.loading}</p>
       ) : error || !event ? (
@@ -162,7 +184,11 @@ function EventBody({
             {mine.position ? ` · ${t.events.position(mine.position)}` : ''}
           </p>
           {mine.status === 'accepted' && isSoon(event.startsAt) && (
-            <DayConfirmation participationId={mine.id} queryKey={queryKey} />
+            <DayConfirmation
+              participationId={mine.id}
+              answered={mine.dayConfirmation}
+              queryKey={queryKey}
+            />
           )}
           {['pending', 'invited', 'counter_proposed', 'accepted', 'reserve'].includes(
             mine.status,
@@ -201,6 +227,11 @@ function EventBody({
           {t.events.manage}
         </Link>
       )}
+      {event.viewer.hostStatus && event.viewer.hostStatus !== 'declined' && (
+        <section className="card">
+          <HostAnswer eventId={event.id} status={event.viewer.hostStatus} />
+        </section>
+      )}
 
       {event.viewer.canApply && (
         <>
@@ -230,41 +261,34 @@ function isSoon(startsAt: string) {
   return ms > -3 * 3_600_000 && ms < 24 * 3_600_000;
 }
 
+/** Отказ — общей кнопкой «Отказаться от участия», здесь только подтверждение. */
 function DayConfirmation({
   participationId,
+  answered,
   queryKey,
 }: {
   participationId: string;
+  answered: MyParticipation['dayConfirmation'];
   queryKey: string[];
 }) {
   const queryClient = useQueryClient();
-  const [result, setResult] = useState<'confirmed' | 'declined' | null>(null);
   const answer = useMutation({
-    mutationFn: (value: 'confirmed' | 'declined') => api.dayConfirmation(participationId, value),
-    onSuccess: (_, value) => {
-      setResult(value);
+    mutationFn: () => api.dayConfirmation(participationId, 'confirmed'),
+    onSuccess: () => {
       haptic('success');
       void queryClient.invalidateQueries({ queryKey });
     },
   });
-  if (result) return <p className="success">{t.day[result]}</p>;
+  const result = answer.isSuccess ? 'confirmed' : answered;
+  if (result !== 'none') {
+    return <p className={result === 'confirmed' ? 'success' : 'hint'}>{t.day[result]}</p>;
+  }
   return (
     <div className="stack">
       <strong>{t.day.title}</strong>
-      <div className="row wrap">
-        <button disabled={answer.isPending} onClick={() => answer.mutate('confirmed')}>
-          {t.day.confirm}
-        </button>
-        <button
-          className="secondary danger-text"
-          disabled={answer.isPending}
-          onClick={() => {
-            if (window.confirm(t.day.declineConfirm)) answer.mutate('declined');
-          }}
-        >
-          {t.day.decline}
-        </button>
-      </div>
+      <button disabled={answer.isPending} onClick={() => answer.mutate()}>
+        {t.day.confirm}
+      </button>
       <ErrorText error={answer.error} />
     </div>
   );
@@ -282,7 +306,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function InboxScreen() {
   const { data, error, isPending } = useQuery({ queryKey: ['inbox'], queryFn: api.inbox });
   return (
-    <Screen title={t.inbox.title} back={<BackButton to="/" />}>
+    <Screen title={t.inbox.title}>
       {isPending ? (
         <p className="hint">{t.loading}</p>
       ) : error ? (
@@ -327,10 +351,11 @@ function InvitationCard({ item }: { item: InboxItem }) {
   const p = item.participation;
   const action = useParticipationAction([['inbox']]);
   const [counter, setCounter] = useState<string | null>(null);
+  const counterRequired = useRequired([[t.inbox.counter, (counter ?? '').trim() !== '']]);
   const disabled = action.busy !== null;
 
   return (
-    <section className="card">
+    <section className="card invitation">
       <EventCard e={item.event} to={`/events/${item.event.id}`} />
       {p.isUrgent && <span className="badge urgent">{t.inbox.urgentReplacement}</span>}
       {p.status === 'counter_proposed' ? (
@@ -338,20 +363,20 @@ function InvitationCard({ item }: { item: InboxItem }) {
           {t.inbox.waitingOrganizer}: «{p.counterProposal}»
         </p>
       ) : counter === null ? (
-        <div className="row wrap">
+        <div className="action-bar">
           <button disabled={disabled} onClick={() => action.run(p.id, 'accept')}>
             {t.inbox.accept}
           </button>
           <button
-            className="secondary"
+            className="outline danger-text"
             disabled={disabled}
             onClick={() => action.run(p.id, 'decline')}
           >
             {t.inbox.decline}
           </button>
           {p.status === 'invited' && (
-            <button className="secondary" disabled={disabled} onClick={() => setCounter('')}>
-              {t.inbox.counter}
+            <button className="outline" disabled={disabled} onClick={() => setCounter('')}>
+              {t.inbox.counterShort}
             </button>
           )}
         </div>
@@ -361,19 +386,22 @@ function InvitationCard({ item }: { item: InboxItem }) {
             label={t.inbox.counter}
             placeholder={t.inbox.counterPlaceholder}
             value={counter}
+            invalid={counterRequired.isMissing(t.inbox.counter)}
             onChange={setCounter}
           />
-          <div className="row">
+          <MissingText missing={counterRequired.missing} />
+          <div className="action-bar">
             <button
-              disabled={disabled || counter.trim() === ''}
+              disabled={disabled}
               onClick={async () => {
+                if (!counterRequired.check()) return;
                 if (await action.run(p.id, 'counter_propose', { text: counter.trim() }))
                   setCounter(null);
               }}
             >
               {t.inbox.send}
             </button>
-            <button className="secondary" onClick={() => setCounter(null)}>
+            <button className="outline" onClick={() => setCounter(null)}>
               {t.back}
             </button>
           </div>

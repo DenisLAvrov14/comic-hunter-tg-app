@@ -12,20 +12,29 @@ import {
   upsertComedianProfile,
   upsertOrganizerProfile,
   type Db,
+  createComedianTrip,
+  deleteComedianTrip,
+  findComedians,
+  findUserById,
+  listComedianTrips,
 } from '@standup/db';
+import { tripDateError, utcToLocal } from '@standup/domain';
 import {
   ComedianProfileInput,
   OrganizerProfileInput,
   PatchMeRequest,
   PHOTO_LIMIT,
-  PHOTO_MAX_BYTES,
   PutRolesRequest,
   type Me,
   type Photo,
+  TripInput,
+  TripParams,
+  type Trip,
 } from '@standup/shared';
 import { rescheduleForUser } from '@standup/notify';
 import { ApiError } from '../errors';
-import { processPhoto, UnsupportedImageError } from '../images';
+import { processPhoto } from '../images';
+import { processImage, readUpload } from '../upload';
 import { loadMe, toPhoto } from '../services/me';
 import type { FileStorage } from '../storage';
 
@@ -48,6 +57,53 @@ export const meRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = as
   }
 
   app.get('/me', async (req): Promise<Me> => loadMe(db, storage, req.user.sub));
+
+  // --- Поездки комика ---
+
+  const toTrip = (t: Trip): Trip => ({
+    id: t.id,
+    cityId: t.cityId,
+    startsOn: t.startsOn,
+    endsOn: t.endsOn,
+  });
+
+  async function userToday(userId: string) {
+    const user = (await findUserById(db, userId))!;
+    return utcToLocal(new Date(), user.timezone).slice(0, 10);
+  }
+
+  app.get('/me/trips', async (req): Promise<Trip[]> =>
+    (await listComedianTrips(db, req.user.sub, await userToday(req.user.sub))).map(toTrip),
+  );
+
+  app.post('/me/trips', async (req, reply): Promise<Trip> => {
+    const body = TripInput.parse(req.body);
+    const userId = req.user.sub;
+    await requireRole(userId, 'comedian');
+    await requireCity(body.cityId);
+    const [profile] = await findComedians(db, [userId]);
+    if (profile?.cityId === body.cityId) {
+      throw new ApiError('VALIDATION', 'Это ваш город, поездка не нужна', { field: 'cityId' });
+    }
+    const dateError = tripDateError(body.startsOn, body.endsOn, await userToday(userId));
+    if (dateError) {
+      const messages = {
+        end_before_start: 'Конец поездки раньше начала',
+        in_past: 'Поездка уже закончилась',
+        too_long: 'Поездка — не дольше 60 дней',
+      };
+      throw new ApiError('VALIDATION', messages[dateError], { field: 'endsOn' });
+    }
+    const trip = await createComedianTrip(db, { comedianId: userId, ...body });
+    reply.status(201);
+    return toTrip(trip);
+  });
+
+  app.delete('/me/trips/:id', async (req, reply) => {
+    const { id } = TripParams.parse(req.params);
+    if (!(await deleteComedianTrip(db, id, req.user.sub))) throw new ApiError('NOT_FOUND');
+    return reply.status(204).send();
+  });
 
   app.patch('/me', async (req): Promise<Me> => {
     const body = PatchMeRequest.parse(req.body);
@@ -99,24 +155,8 @@ export const meRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = as
         throw new ApiError('VALIDATION', `Можно загрузить не больше ${PHOTO_LIMIT} фото`);
       }
 
-      const file = await req.file({ limits: { fileSize: PHOTO_MAX_BYTES, files: 1 } });
-      if (!file) throw new ApiError('VALIDATION', 'Файл не передан');
-      const input = await file.toBuffer().catch((err: { code?: string }) => {
-        if (err.code === 'FST_REQ_FILE_TOO_LARGE') {
-          throw new ApiError('VALIDATION', 'Файл больше 10 МБ');
-        }
-        throw err;
-      });
-
-      let processed;
-      try {
-        processed = await processPhoto(input);
-      } catch (err) {
-        if (err instanceof UnsupportedImageError) {
-          throw new ApiError('VALIDATION', 'Поддерживаются JPEG, PNG, WebP и HEIC');
-        }
-        throw err;
-      }
+      const input = await readUpload(req);
+      const processed = await processImage(() => processPhoto(input));
 
       const id = randomUUID();
       const s3Key = `photos/${userId}/${id}.jpg`;

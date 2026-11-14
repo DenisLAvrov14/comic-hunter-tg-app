@@ -1,6 +1,6 @@
 import ICAL from 'ical.js';
 import { describe, expect, it } from 'vitest';
-import { buildIcs, type IcsGig } from './ics';
+import { buildFeedPage, buildIcs, type IcsGig } from './ics';
 
 const gig: IcsGig = {
   participationId: '0c65fc41-07bc-409d-8d6a-f3c02487494c',
@@ -24,7 +24,7 @@ function parse(text: string) {
 
 describe('buildIcs', () => {
   it('валидный календарь: парсится, стабильный UID, весь вечер, описание', () => {
-    const text = buildIcs({ timezone: 'Europe/Moscow', gigs: [gig], manual: [] });
+    const text = buildIcs({ timezone: 'Europe/Moscow', gigs: [gig], busy: [] });
     expect(text).toContain('BEGIN:VCALENDAR');
     expect(text).toContain('X-WR-CALNAME:Stand Up Calendar');
     expect(text).toContain('X-WR-TIMEZONE:Europe/Moscow');
@@ -49,13 +49,12 @@ describe('buildIcs', () => {
   });
 
   it('SEQUENCE растёт при изменении, отменённое — STATUS:CANCELLED', () => {
-    const before = parse(buildIcs({ timezone: 'Europe/Moscow', gigs: [gig], manual: [] }))
-      .events[0]!;
+    const before = parse(buildIcs({ timezone: 'Europe/Moscow', gigs: [gig], busy: [] })).events[0]!;
     const after = parse(
       buildIcs({
         timezone: 'Europe/Moscow',
         gigs: [{ ...gig, cancelled: true, updatedAt: new Date('2026-11-02T10:00:00Z') }],
-        manual: [],
+        busy: [],
       }),
     ).events[0]!;
     expect(after.sequence).toBeGreaterThan(before.sequence);
@@ -63,18 +62,37 @@ describe('buildIcs', () => {
     expect(after.component.getFirstPropertyValue('status')).toBe('CANCELLED');
   });
 
-  it('ручные выступления — отдельные события', () => {
+  it('свои выступления и занятость — отдельные события', () => {
     const { events } = parse(
       buildIcs({
         timezone: 'Asia/Almaty',
         gigs: [],
-        manual: [
+        busy: [
           {
             id: 'b1',
+            kind: 'manual_gig',
             title: 'Корпоратив',
             venueText: 'Ресторан',
             startsAt: new Date('2026-11-07T14:00:00Z'),
             endsAt: new Date('2026-11-07T16:00:00Z'),
+            createdAt: new Date('2026-11-01T00:00:00Z'),
+          },
+          {
+            id: 'b2',
+            kind: 'busy',
+            title: 'Репетиция',
+            venueText: null,
+            startsAt: new Date('2026-11-08T14:00:00Z'),
+            endsAt: new Date('2026-11-08T16:00:00Z'),
+            createdAt: new Date('2026-11-01T00:00:00Z'),
+          },
+          {
+            id: 'b3',
+            kind: 'busy',
+            title: null,
+            venueText: null,
+            startsAt: new Date('2026-11-09T14:00:00Z'),
+            endsAt: new Date('2026-11-09T16:00:00Z'),
             createdAt: new Date('2026-11-01T00:00:00Z'),
           },
         ],
@@ -82,6 +100,16 @@ describe('buildIcs', () => {
     );
     expect(events.map((e) => [e.uid, e.summary, e.location])).toEqual([
       ['busy-b1@standupcalendar', '🎤 Корпоратив', 'Ресторан'],
+      ['busy-b2@standupcalendar', 'Занят: Репетиция', null],
+      ['busy-b3@standupcalendar', 'Занят', null],
     ]);
+  });
+
+  it('страница подключения ведёт в webcal и в Google', () => {
+    const page = buildFeedPage('https://example.test/cal/abc.ics');
+    expect(page).toContain('href="webcal://example.test/cal/abc.ics"');
+    expect(page).toContain(
+      'href="https://calendar.google.com/calendar/r?cid=webcal%3A%2F%2Fexample.test%2Fcal%2Fabc.ics"',
+    );
   });
 });

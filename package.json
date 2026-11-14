@@ -17,6 +17,7 @@
     "db:generate": "pnpm --filter @standup/db generate",
     "db:migrate": "pnpm --filter @standup/db migrate",
     "seed": "pnpm --filter @standup/db seed",
+    "seed:catalog": "pnpm --filter @standup/db seed:catalog",
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {

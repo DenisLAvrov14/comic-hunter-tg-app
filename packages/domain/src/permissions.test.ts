@@ -75,10 +75,10 @@ describe('can: организатор и ведущий', () => {
     expect(can(ORG, 'invitation.respond', { event: event() })).toBe(false);
   });
 
-  it('права по умолчанию у нового ведущего — только отметка присутствия', () => {
+  it('новый ведущий только смотрит: никаких прав на состав', () => {
     expect(defaultHostPermissions()).toEqual({
       can_reorder: false,
-      can_mark_attendance: true,
+      can_mark_attendance: false,
       can_call_reserve: false,
       can_notify_lineup: false,
     });
@@ -100,8 +100,11 @@ describe('can: комик', () => {
     it('открытый набор — да', () => {
       expect(can(COMIC, 'event.view', { event: event() })).toBe(true);
     });
-    it('закрытый набор — нет', () => {
-      expect(can(COMIC, 'event.view', { event: event({ recruitmentOpen: false }) })).toBe(false);
+    it('закрытый набор — да: событие видно на «Карте»', () => {
+      expect(can(COMIC, 'event.view', { event: event({ recruitmentOpen: false }) })).toBe(true);
+    });
+    it('черновик — нет', () => {
+      expect(can(COMIC, 'event.view', { event: event({ status: 'draft' }) })).toBe(false);
     });
     it('закрытый набор, но по ссылке — да', () => {
       expect(

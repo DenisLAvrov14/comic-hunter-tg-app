@@ -14,8 +14,29 @@ export const MAX_ATTEMPTS = 6;
  * (упал отправитель) забираются повторно.
  */
 export async function claimDue(db: Db, now: Date, limit = 500): Promise<string[]> {
+  return (await claimDueRows(db, now, limit)).map((r) => r.id);
+}
+
+/**
+ * То же, но с ключом задачи для очереди. Ключ включает send_at: уведомление, поставленное
+ * заново (было пропущено, потом снова стало нужным), — это новая задача, а не дубль старой,
+ * уже завершённой.
+ */
+export async function claimDueJobs(db: Db, now: Date, limit = 500) {
+  return (await claimDueRows(db, now, limit)).map((r) => ({
+    id: r.id,
+    jobId: notificationJobId(r.id, new Date(r.send_at)),
+  }));
+}
+
+/** Id задачи BullMQ. Двоеточие BullMQ в своих id запрещает — разделитель дефис. */
+export function notificationJobId(id: string, sendAt: Date): string {
+  return `${id}-${sendAt.getTime()}`;
+}
+
+async function claimDueRows(db: Db, now: Date, limit: number) {
   const at = now.toISOString();
-  const rows = await db.execute<{ id: string }>(sql`
+  const rows = await db.execute<{ id: string; send_at: string }>(sql`
     update ${sn} set status = 'queued'
     where id in (
       select id from ${sn}
@@ -26,8 +47,8 @@ export async function claimDue(db: Db, now: Date, limit = 500): Promise<string[]
       limit ${limit}
       for update skip locked
     )
-    returning id`);
-  return rows.map((r) => r.id);
+    returning id, send_at`);
+  return [...rows];
 }
 
 export type DeliveryOutcome =

@@ -26,6 +26,7 @@ export const notificationKinds = [
   'counter_proposal_received',
   'new_application',
   'broadcast',
+  'host_invitation',
 ] as const;
 export type NotificationKind = (typeof notificationKinds)[number];
 

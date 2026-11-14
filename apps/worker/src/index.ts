@@ -5,7 +5,7 @@ import { createDb } from '@standup/db';
 import {
   BotApiSender,
   MemorySender,
-  claimDue,
+  claimDueJobs,
   deliverNotification,
   postpone,
   type DeliveryContext,
@@ -40,11 +40,13 @@ const ctx: DeliveryContext = {
 
 async function tick() {
   try {
-    const ids = await claimDue(db, new Date());
-    if (ids.length === 0) return;
-    // jobId = id уведомления: повторный claim не создаёт дублей в очереди.
-    await queue.addBulk(ids.map((id) => ({ name: 'send', data: { id }, opts: { jobId: id } })));
-    log.info({ count: ids.length }, 'notifications queued');
+    const jobs = await claimDueJobs(db, new Date());
+    if (jobs.length === 0) return;
+    // Повторный claim той же строки с тем же send_at не создаёт дублей в очереди.
+    await queue.addBulk(
+      jobs.map(({ id, jobId }) => ({ name: 'send', data: { id }, opts: { jobId } })),
+    );
+    log.info({ count: jobs.length }, 'notifications queued');
   } catch (err) {
     log.error({ err }, 'scheduler tick failed');
   }

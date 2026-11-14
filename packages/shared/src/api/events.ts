@@ -1,9 +1,20 @@
 import { z } from 'zod';
-import { ComedianCategory, Photo, ProfileLink } from './profiles';
+import { ComedianCategory, IsoDate, Photo, ProfileLink, Trip } from './profiles';
 
-export const eventFormats = ['open_mic', 'showcase', 'concert', 'other'] as const;
+export const eventFormats = ['open_mic', 'showcase', 'concert', 'other', 'tryout', 'paid'] as const;
 export const EventFormat = z.enum(eventFormats);
 export type EventFormat = z.infer<typeof EventFormat>;
+/**
+ * Форматы, которые можно выбрать, по порядку: опен, проверка, платка, шоу (concert), другое.
+ * Showcase убран из выбора, но остаётся в данных.
+ */
+export const selectableEventFormats = [
+  'open_mic',
+  'tryout',
+  'paid',
+  'concert',
+  'other',
+] as const satisfies readonly EventFormat[];
 
 export const eventStatuses = [
   'draft',
@@ -77,7 +88,8 @@ export const EventPatch = EventFields.partial().extend({
 export type EventPatch = z.input<typeof EventPatch>;
 
 export const EventsQuery = z.object({
-  city: z.coerce.number().int().positive(),
+  // Без города — наборы везде.
+  city: z.coerce.number().int().positive().optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   format: EventFormat.optional(),
@@ -92,6 +104,7 @@ export const MyParticipation = z.object({
   autoAccepted: z.boolean(),
   isUrgent: z.boolean(),
   counterProposal: z.string().nullable(),
+  dayConfirmation: z.enum(['none', 'confirmed', 'declined']),
 });
 export type MyParticipation = z.infer<typeof MyParticipation>;
 
@@ -120,6 +133,8 @@ export const EventSummary = z.object({
   slotsCount: z.number().int(),
   acceptedCount: z.number().int(),
   recruitmentOpen: z.boolean(),
+  /** Ждут решения организатора: заявки и встречные предложения. Только в «Моих событиях». */
+  awaitingCount: z.number().int().optional(),
 });
 export type EventSummary = z.infer<typeof EventSummary>;
 
@@ -134,6 +149,8 @@ export const EventDetails = EventSummary.extend({
     isOrganizer: z.boolean(),
     /** Флаги ведущего, если пользователь в штате события. */
     staffPermissions: z.record(z.boolean()).nullable(),
+    /** Ответ ведущего на приглашение, если пользователь в штате события. */
+    hostStatus: z.enum(['invited', 'accepted', 'declined']).nullable(),
     canApply: z.boolean(),
     participation: MyParticipation.nullable(),
   }),
@@ -199,6 +216,16 @@ export const ComedianBrief = z.object({
 });
 export type ComedianBrief = z.infer<typeof ComedianBrief>;
 
+/** Больше комиков поиск не отдаёт: дальше надо уточнять фильтры. */
+export const COMEDIAN_SEARCH_LIMIT = 50;
+
+export const ComedianSearchItem = ComedianBrief.extend({
+  cityId: z.number().int(),
+  /** Поездка по условиям поиска: в выбранный город или на выбранную дату. */
+  trip: Trip.nullable(),
+});
+export type ComedianSearchItem = z.infer<typeof ComedianSearchItem>;
+
 export const LineupItem = z.object({
   id: z.string().uuid(),
   status: ParticipationStatus,
@@ -220,11 +247,15 @@ export const LineupItem = z.object({
 });
 export type LineupItem = z.infer<typeof LineupItem>;
 
+export const StaffStatus = z.enum(['invited', 'accepted', 'declined']);
+export type StaffStatus = z.infer<typeof StaffStatus>;
+
 export const StaffMember = z.object({
   userId: z.string().uuid(),
   name: z.string(),
   username: z.string().nullable(),
   permissions: z.record(z.boolean()),
+  status: StaffStatus,
 });
 export type StaffMember = z.infer<typeof StaffMember>;
 
@@ -257,6 +288,8 @@ export const ComediansQuery = z.object({
   q: z.string().trim().max(64).optional(),
   city: z.coerce.number().int().positive().optional(),
   category: ComedianCategory.optional(),
+  /** С городом: кто там в этот день, с учётом поездок. */
+  date: IsoDate.optional(),
   /** Только свободные во время этого события. */
   freeAtEvent: z.string().uuid().optional(),
 });
@@ -272,9 +305,42 @@ export const ComedianCard = z.object({
   photos: z.array(Photo),
   /** Выступлений через приложение (accepted в прошедших событиях). */
   gigsCount: z.number().int(),
-  contact: z.string(),
+  /** Контакт для связи — только организаторам. */
+  contact: z.string().nullable(),
 });
 export type ComedianCard = z.infer<typeof ComedianCard>;
+
+/** «Карта»: события города на дату. Дата — по местному времени площадки. */
+export const MapQuery = z.object({
+  city: z.coerce.number().int().positive().optional(),
+  date: IsoDate,
+});
+export type MapQuery = z.infer<typeof MapQuery>;
+
+export const MapPerformer = z.object({
+  position: z.number().int(),
+  comedianId: z.string().uuid(),
+  stageName: z.string(),
+  photoUrl: z.string().nullable(),
+});
+export type MapPerformer = z.infer<typeof MapPerformer>;
+
+export const MapEvent = EventSummary.extend({
+  /** Состав по порядку; null — организатор его не показывает. */
+  lineup: z.array(MapPerformer).nullable(),
+});
+export type MapEvent = z.infer<typeof MapEvent>;
+
+/** Счётчики на пунктах меню — как непрочитанные в мессенджере. */
+export const Badges = z.object({
+  /** Комик: приглашения, ждущие ответа. */
+  inbox: z.number().int(),
+  /** Организатор: заявки и встречные предложения в предстоящих событиях. */
+  events: z.number().int(),
+  /** Ведущий: приглашения вести, ждущие ответа. */
+  hosting: z.number().int(),
+});
+export type Badges = z.infer<typeof Badges>;
 
 export const LineupOrderRequest = z.object({
   /** Все accepted-участия в новом порядке. */
@@ -326,6 +392,13 @@ export const StaffPermissionsRequest = z.object({
   ),
 });
 export type StaffPermissionsRequest = z.infer<typeof StaffPermissionsRequest>;
+
+/** «Я веду»: событие и ответ ведущего. */
+export const HostingItem = z.object({ event: EventSummary, status: StaffStatus });
+export type HostingItem = z.infer<typeof HostingItem>;
+
+export const HostingAnswerRequest = z.object({ value: z.enum(['accepted', 'declined']) });
+export type HostingAnswerRequest = z.infer<typeof HostingAnswerRequest>;
 
 export const HostCandidate = z.object({
   userId: z.string().uuid(),

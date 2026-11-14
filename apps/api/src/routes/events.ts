@@ -1,8 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import {
+  countBadges,
+  countParticipationsByEvent,
   countPastGigs,
   createEvent,
+  listAcceptedForEvents,
+  listEventsOnDate,
   findComedians,
   findEvent,
   findEventByLinkToken,
@@ -15,6 +19,8 @@ import {
   listPhotos,
   lockEvent,
   recordParticipationEvent,
+  findUserById,
+  listTripsForSearch,
   searchComedians,
   updateEvent,
   upsertParticipation,
@@ -29,6 +35,7 @@ import {
   isActive,
   localToUtc,
   shiftLocalDays,
+  utcToLocal,
 } from '@standup/domain';
 import {
   ApplicationRequest,
@@ -37,8 +44,11 @@ import {
   EventPatch,
   EventsQuery,
   InvitationsRequest,
+  MapQuery,
   ParticipationActionRequest,
-  type ComedianBrief,
+  type Badges,
+  type MapEvent,
+  type ComedianSearchItem,
   type ComedianCard,
   type EventDetails,
   type EventSummary,
@@ -46,6 +56,7 @@ import {
   type InvitationsResponse,
   type Lineup,
   type MyParticipation,
+  COMEDIAN_SEARCH_LIMIT,
 } from '@standup/shared';
 import {
   enqueueNow,
@@ -142,8 +153,54 @@ export const eventRoutes: FastifyPluginAsync<{
 
   app.get('/me/events', async (req): Promise<EventSummary[]> => {
     const { when } = WhenQuery.parse(req.query);
-    return (await listOrganizerEvents(db, req.user.sub, when, new Date())).map(toEventSummary);
+    const rows = await listOrganizerEvents(db, req.user.sub, when, new Date());
+    const awaiting = await countParticipationsByEvent(
+      db,
+      rows.map((r) => r.event.id),
+      ['pending', 'counter_proposed'],
+    );
+    return rows.map((r) => ({
+      ...toEventSummary(r),
+      awaitingCount: awaiting.get(r.event.id) ?? 0,
+    }));
   });
+
+  /** «Карта»: все опубликованные события города на дату и их составы. */
+  app.get('/map', async (req): Promise<MapEvent[]> => {
+    const q = MapQuery.parse(req.query);
+    const rows = await listEventsOnDate(db, { cityId: q.city, date: q.date });
+    const accepted = await listAcceptedForEvents(
+      db,
+      rows.filter((r) => r.event.showLineup).map((r) => r.event.id),
+    );
+    const comedians = new Map(
+      (
+        await findComedians(
+          db,
+          accepted.map((a) => a.comedianId),
+        )
+      ).map((c) => [c.userId, c]),
+    );
+    return rows.map((r) => ({
+      ...toEventSummary(r),
+      lineup: r.event.showLineup
+        ? accepted
+            .filter((a) => a.eventId === r.event.id && a.position !== null)
+            .sort((a, b) => a.position! - b.position!)
+            .map((a) => {
+              const c = comedians.get(a.comedianId);
+              return {
+                position: a.position!,
+                comedianId: a.comedianId,
+                stageName: c?.stageName ?? '—',
+                photoUrl: c ? toComedianBrief(storage, c).photoUrl : null,
+              };
+            })
+        : null,
+    }));
+  });
+
+  app.get('/me/badges', async (req): Promise<Badges> => countBadges(db, req.user.sub, new Date()));
 
   app.post('/events', async (req, reply): Promise<EventDetails> => {
     const body = EventInput.parse(req.body);
@@ -366,11 +423,8 @@ export const eventRoutes: FastifyPluginAsync<{
       const skipped: string[] = [];
       for (const comedianId of ids) {
         const existing = await findUserParticipation(tx, id, comedianId);
-        if (
-          !known.has(comedianId) ||
-          comedianId === userId ||
-          (existing && isActive(existing.status))
-        ) {
+        // Организатор может позвать и себя: он же выступает на своём событии.
+        if (!known.has(comedianId) || (existing && isActive(existing.status))) {
           skipped.push(comedianId);
           continue;
         }
@@ -470,37 +524,68 @@ export const eventRoutes: FastifyPluginAsync<{
       (r.participation.isUrgent && r.participation.status === 'reserve');
     return {
       invitations: rows.filter(awaiting).map(item),
+      // Всё остальное, включая принятые приглашения и резерв: иначе комик теряет событие из виду.
+      // Приглашения, от которых комик сам отказался, не показываем.
       applications: rows
-        .filter((r) => r.participation.source !== 'invitation' && !awaiting(r))
+        .filter(
+          (r) =>
+            !awaiting(r) &&
+            !(r.participation.source === 'invitation' && r.participation.status === 'declined'),
+        )
         .map(item),
     };
   });
 
   // --- Поиск комиков ---
 
-  app.get('/comedians', async (req): Promise<Array<ComedianBrief & { cityId: number }>> => {
+  app.get('/comedians', async (req): Promise<ComedianSearchItem[]> => {
     const q = ComediansQuery.parse(req.query);
     await requireRole(req.user.sub, 'organizer');
+    const user = (await findUserById(db, req.user.sub))!;
+    const today = utcToLocal(new Date(), user.timezone).slice(0, 10);
+    const event = q.freeAtEvent
+      ? await eventFor(req.user.sub, q.freeAtEvent, 'comedians.invite')
+      : null;
+    // На событие важен город в день события, поэтому его дата заменяет выбор даты.
+    const date = event
+      ? utcToLocal(event.startsAt, (await requireVenue(event.venueId)).timezone).slice(0, 10)
+      : q.date;
     let rows = await searchComedians(db, {
       text: q.q,
       cityId: q.city,
       category: q.category,
-      limit: q.freeAtEvent ? 200 : 50,
+      limit: q.freeAtEvent ? 200 : COMEDIAN_SEARCH_LIMIT,
+      date,
+      today,
     });
-    if (q.freeAtEvent) {
-      const event = await eventFor(req.user.sub, q.freeAtEvent, 'comedians.invite');
+    if (event) {
       const window = eventWindow(event);
       const free = await Promise.all(
         rows.map(async (c) => (await scheduleConflicts(db, c, event.id, window)).length === 0),
       );
-      rows = rows.filter((_, i) => free[i]).slice(0, 50);
+      rows = rows.filter((_, i) => free[i]).slice(0, COMEDIAN_SEARCH_LIMIT);
     }
-    return rows.map((c) => ({ ...toComedianBrief(storage, c), cityId: c.cityId }));
+    const trips = await listTripsForSearch(
+      db,
+      rows.map((c) => c.userId),
+      { cityId: q.city, date, today },
+    );
+    return rows.map((c) => {
+      const trip = trips.find((x) => x.comedianId === c.userId);
+      return {
+        ...toComedianBrief(storage, c),
+        cityId: c.cityId,
+        trip: trip
+          ? { id: trip.id, cityId: trip.cityId, startsOn: trip.startsOn, endsOn: trip.endsOn }
+          : null,
+      };
+    });
   });
 
+  // Профиль комика видят все: он открывается из состава на «Карте». Контакт — только организаторам.
   app.get('/comedians/:id', async (req): Promise<ComedianCard> => {
     const { id } = IdParams.parse(req.params);
-    await requireRole(req.user.sub, 'organizer');
+    const isOrganizer = (await getUserRoles(db, req.user.sub)).includes('organizer');
     const [c] = await findComedians(db, [id]);
     if (!c) throw new ApiError('NOT_FOUND');
     const [photos, gigsCount] = await Promise.all([
@@ -516,7 +601,7 @@ export const eventRoutes: FastifyPluginAsync<{
       links: c.links,
       photos: photos.map((p) => toPhoto(storage, p)),
       gigsCount,
-      contact: c.contact,
+      contact: isOrganizer ? c.contact : null,
     };
   });
 };

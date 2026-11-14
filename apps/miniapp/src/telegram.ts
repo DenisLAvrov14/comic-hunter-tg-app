@@ -31,13 +31,24 @@ export function initTelegram(): TelegramEnv {
   inTelegram = true;
   themeParams.mountSync.ifAvailable();
   themeParams.bindCssVars.ifAvailable();
+  // Нативные поля (дата, время, списки) красятся по теме Telegram, а не по теме системы:
+  // иначе в тёмном Telegram на светлой Windows значок календаря получается чёрным.
+  const applyScheme = () => {
+    document.documentElement.dataset.theme = themeParams.isDark() ? 'dark' : 'light';
+  };
+  applyScheme();
+  themeParams.isDark.sub(applyScheme);
   miniApp.mountSync.ifAvailable();
   backButton.mount.ifAvailable();
   swipeBehavior.mount.ifAvailable();
   if (mainButton.mount.isAvailable()) mainButton.mount();
   void viewport.mount
     .ifAvailable()?.[1]
-    ?.then(() => viewport.expand.ifAvailable())
+    ?.then(() => {
+      viewport.expand.ifAvailable();
+      // --tg-viewport-safe-area-inset-bottom: полоска «домой» на iPhone, env() в WebView часто 0.
+      viewport.bindCssVars.ifAvailable();
+    })
     .catch(() => {});
   miniApp.ready.ifAvailable();
 
@@ -60,18 +71,14 @@ export function setVerticalSwipes(enabled: boolean) {
   else swipeBehavior.disableVertical.ifAvailable();
 }
 
-/**
- * Внешняя ссылка (в т.ч. webcal:// для подписки на календарь).
- * TODO(spec): Telegram официально открывает только http(s); если клиент откажется от webcal —
- * пользователь подпишется по скопированной https-ссылке (инструкция на экране).
- */
+/** Внешняя https-ссылка. */
 export function openExternal(url: string) {
   if (inTelegram && openLink.isAvailable()) {
     try {
       openLink(url);
       return;
     } catch {
-      // Неподдерживаемая схема — пробуем как обычную ссылку.
+      // Клиент отказался — пробуем как обычную ссылку.
     }
   }
   window.location.href = url;

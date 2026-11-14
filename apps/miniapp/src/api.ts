@@ -4,13 +4,14 @@ import type {
   AuthResponse,
   AutoAcceptRule,
   AutoAcceptRuleInput,
+  Badges,
   BusySlotInput,
   CalendarBusy,
   CalendarFeed,
   CalendarResponse,
   BroadcastResponse,
   City,
-  ComedianBrief,
+  ComedianSearchItem,
   ComedianCard,
   ComedianProfileInput,
   ComediansQuery,
@@ -23,15 +24,18 @@ import type {
   EventPatch,
   EventSummary,
   HostCandidate,
+  HostingItem,
   Inbox,
   InvitationsResponse,
   Lineup,
+  MapEvent,
   Me,
   MyParticipation,
   OrganizerCandidate,
   ParticipationActionRequest,
   PublishPostsResponse,
   StaffPermissionsRequest,
+  StaffStatus,
   TelegramChatView,
   OrganizerProfileInput,
   PatchMeRequest,
@@ -41,6 +45,9 @@ import type {
   VenueInput,
 } from '@standup/shared';
 import { ru } from '@standup/shared';
+
+/** Где искать: город или, если пусто, везде. */
+export type SearchArea = { city?: number };
 
 const BASE = '/api/v1';
 let token: string | null = null;
@@ -111,8 +118,17 @@ export const api = {
   cities: () => request<City[]>('GET', '/cities'),
   venues: (cityId: number) => request<Venue[]>('GET', `/venues?city=${cityId}`),
   createVenue: (body: VenueInput) => request<Venue>('POST', '/venues', body),
+  uploadVenueImage: (id: string, kind: 'logo' | 'photo', file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<Venue>('PUT', `/venues/${id}/${kind}`, form);
+  },
+  deleteVenueImage: (id: string, kind: 'logo' | 'photo') =>
+    request<Venue>('DELETE', `/venues/${id}/${kind}`),
+  map: (q: { city?: number; date: string }) => request<MapEvent[]>('GET', `/map?${query(q)}`),
+  badges: () => request<Badges>('GET', '/me/badges'),
 
-  openEvents: (q: { city: number; from?: string; format?: EventFormat }) =>
+  openEvents: (q: SearchArea & { from?: string; format?: EventFormat }) =>
     request<EventSummary[]>('GET', `/events?${query(q)}`),
   myEvents: (when: 'upcoming' | 'past') =>
     request<EventSummary[]>('GET', `/me/events?when=${when}`),
@@ -124,7 +140,6 @@ export const api = {
     request<EventDetails>('PATCH', `/events/${id}`, body),
   cancelEvent: (id: string) => request<EventDetails>('POST', `/events/${id}/cancel`, {}),
   duplicateEvent: (id: string) => request<EventDetails>('POST', `/events/${id}/duplicate`, {}),
-  rotateLink: (id: string) => request<EventDetails>('POST', `/events/${id}/link/rotate`, {}),
   apply: (id: string, body: { token?: string; message?: string }) =>
     request<MyParticipation>('POST', `/events/${id}/applications`, body),
   invite: (id: string, comedianIds: string[]) =>
@@ -133,8 +148,7 @@ export const api = {
   participationAction: (id: string, body: ParticipationActionRequest) =>
     request<MyParticipation>('POST', `/participations/${id}/actions`, body),
   inbox: () => request<Inbox>('GET', '/me/inbox'),
-  comedians: (q: ComediansQuery) =>
-    request<Array<ComedianBrief & { cityId: number }>>('GET', `/comedians?${query(q)}`),
+  comedians: (q: ComediansQuery) => request<ComedianSearchItem[]>('GET', `/comedians?${query(q)}`),
   comedian: (id: string) => request<ComedianCard>('GET', `/comedians/${id}`),
 
   reorder: (id: string, order: string[], version: number) =>
@@ -155,7 +169,9 @@ export const api = {
     request<Lineup>('PUT', `/events/${id}/staff/${userId}`, { permissions }),
   deleteStaff: (id: string, userId: string) =>
     request<Lineup>('DELETE', `/events/${id}/staff/${userId}`),
-  hosting: () => request<EventSummary[]>('GET', '/me/hosting'),
+  hosting: () => request<HostingItem[]>('GET', '/me/hosting'),
+  answerHosting: (eventId: string, value: 'accepted' | 'declined') =>
+    request<{ status: StaffStatus }>('POST', `/events/${eventId}/hosting`, { value }),
 
   calendar: (from: string, to: string) =>
     request<CalendarResponse>('GET', `/me/calendar?${query({ from, to })}`),

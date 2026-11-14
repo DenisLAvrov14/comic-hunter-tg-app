@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import type { Db } from '@standup/db';
 import type { Config } from './config';
 import { registerErrorHandler } from './errors';
+import { redactUrl } from './redact';
 import { authPlugin } from './plugins/auth';
 import { authRoutes } from './routes/auth';
 import { meRoutes } from './routes/me';
@@ -35,6 +36,14 @@ export async function buildApp({ config, db, storage, poster }: AppDeps) {
             level: config.logLevel,
             // Токены и initData не должны попадать в логи.
             redact: ['req.headers.authorization', 'req.body.initData', 'req.query.token'],
+            serializers: {
+              req: (req) => ({
+                method: req.method,
+                url: redactUrl(req.url),
+                host: req.host,
+                remoteAddress: req.ip,
+              }),
+            },
           },
     genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
     trustProxy: true,
@@ -57,13 +66,13 @@ export async function buildApp({ config, db, storage, poster }: AppDeps) {
   };
 
   app.get('/health', async () => ({ ok: true }));
-  await app.register(icsRoutes, { db });
+  await app.register(icsRoutes, { db, publicBaseUrl: config.publicBaseUrl });
 
   await app.register(
     async (api) => {
       await api.register(authRoutes, { config, db, storage });
       await api.register(meRoutes, { db, storage });
-      await api.register(referenceRoutes, { db });
+      await api.register(referenceRoutes, { db, storage });
       await api.register(eventRoutes, { db, storage, onEventChanged });
       await api.register(lineupRoutes, { db, storage });
       await api.register(postRoutes, { db, poster, links });

@@ -215,16 +215,11 @@ export async function listFeedGigs(db: Db, userId: string, since: Date, cancelle
     );
 }
 
-export function listManualGigs(db: Db, userId: string, since: Date) {
+/** Занятость и свои выступления для ICS-ленты. */
+export function listFeedBusySlots(db: Db, userId: string, since: Date) {
   return db
     .select()
     .from(busySlots)
-    .where(
-      and(
-        eq(busySlots.userId, userId),
-        eq(busySlots.kind, 'manual_gig'),
-        sql`${busySlots.endsAt} >= ${ts(since)}`,
-      ),
-    )
+    .where(and(eq(busySlots.userId, userId), sql`${busySlots.endsAt} >= ${ts(since)}`))
     .orderBy(asc(busySlots.startsAt));
 }

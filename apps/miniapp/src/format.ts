@@ -32,6 +32,20 @@ export function formatRange(start: string, end: string, tz: string): string {
   return `${formatTime(start, tz)}–${formatTime(end, tz)}`;
 }
 
+/** Даты без времени, yyyy-MM-dd: «12 ноября», «12–14 ноября», «28 ноября – 2 декабря». */
+export function formatDayRange(from: string, to: string): string {
+  const parts = (date: string) =>
+    Object.fromEntries(
+      fmt('UTC', { day: 'numeric', month: 'long' })
+        .formatToParts(new Date(`${date}T00:00:00Z`))
+        .map((p) => [p.type, p.value]),
+    );
+  const [a, b] = [parts(from), parts(to)];
+  if (from === to) return `${a.day} ${a.month}`;
+  if (a.month === b.month) return `${a.day}–${b.day} ${b.month}`;
+  return `${a.day} ${a.month} – ${b.day} ${b.month}`;
+}
+
 /** Части местного времени площадки для формы: { date: '2026-11-06', time: '20:00' }. */
 export function toLocalParts(iso: string, tz: string): { date: string; time: string } {
   const parts = Object.fromEntries(

@@ -9,13 +9,13 @@ import {
   RolePicker,
   comedianDraft,
   comedianInput,
-  comedianReady,
+  comedianRequired,
   organizerDraft,
   organizerInput,
-  organizerReady,
+  organizerRequired,
 } from '../forms';
 import { askWriteAccess, haptic } from '../telegram';
-import { BackButton, ErrorText, MainButton } from '../ui';
+import { BackButton, ErrorText, MainButton, MissingText, useRequired } from '../ui';
 
 const t = ru.app;
 const o = t.onboarding;
@@ -74,7 +74,11 @@ function RolesStep({ me, onDone }: { me: Me; onDone: (user: Me) => void }) {
   const [error, setError] = useState<unknown>(null);
 
   async function submit() {
-    if (roles.length === 0) return;
+    if (roles.length === 0) {
+      setError(t.chooseRole);
+      haptic('error');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -93,7 +97,7 @@ function RolesStep({ me, onDone }: { me: Me; onDone: (user: Me) => void }) {
       <p className="hint">{o.rolesHint}</p>
       <RolePicker value={roles} onChange={setRoles} />
       <ErrorText error={error} />
-      <MainButton text={t.next} disabled={roles.length === 0} loading={saving} onClick={submit} />
+      <MainButton text={t.next} loading={saving} onClick={submit} />
     </>
   );
 }
@@ -129,15 +133,13 @@ function ProfileStep({
       setComedian({ ...comedian, cityId: d.cityId });
   };
 
-  const ready =
-    (!isComedian || comedianReady(comedian)) && (!isOrganizer || organizerReady(organizer));
+  const required = useRequired([
+    ...(isComedian ? comedianRequired(comedian) : []),
+    ...(isOrganizer ? organizerRequired(organizer) : []),
+  ]);
 
   async function submit() {
-    if (!ready) {
-      setError(t.required);
-      haptic('error');
-      return;
-    }
+    if (!required.check()) return;
     setSaving(true);
     setError(null);
     try {
@@ -161,13 +163,23 @@ function ProfileStep({
       {isComedian && (
         <section className="card">
           {isOrganizer && <h2>{o.comedianSection}</h2>}
-          <ComedianFields draft={comedian} onChange={setComedianDraft} full={false} />
+          <ComedianFields
+            draft={comedian}
+            onChange={setComedianDraft}
+            full={false}
+            missing={required.missing}
+          />
         </section>
       )}
       {isOrganizer && (
         <section className="card">
           {isComedian && <h2>{o.organizerSection}</h2>}
-          <OrganizerFields draft={organizer} onChange={setOrganizerDraft} full={false} />
+          <OrganizerFields
+            draft={organizer}
+            onChange={setOrganizerDraft}
+            full={false}
+            missing={required.missing}
+          />
         </section>
       )}
       {!isComedian && !isOrganizer ? (
@@ -175,6 +187,7 @@ function ProfileStep({
       ) : (
         <p className="hint">{t.fillLater}</p>
       )}
+      <MissingText missing={required.missing} />
       <ErrorText error={error} />
       <MainButton text={t.next} loading={saving} onClick={submit} />
     </>

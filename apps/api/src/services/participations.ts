@@ -26,6 +26,14 @@ import type { ParticipationActionRequest } from '@standup/shared';
 import { ApiError } from '../errors';
 import { scheduleConflicts } from './events';
 
+/** Действия, которые комик совершает над своим участием. */
+const comedianActions: ParticipationActionRequest['action'][] = [
+  'accept',
+  'decline',
+  'counter_propose',
+  'withdraw',
+];
+
 /** Комик закрывает место в составе — позиции оставшихся уплотняются. */
 async function compactLineup(tx: Tx, eventId: string) {
   const all = await listEventParticipations(tx, eventId);
@@ -52,8 +60,12 @@ export async function applyParticipationAction(
     if (!event) throw new ApiError('NOT_FOUND');
     // Повторное чтение под блокировкой события: статус мог измениться параллельно.
     const p = (await findParticipation(tx, participationId))!;
+    const isOrganizer = event.organizerId === userId;
 
-    const isComedian = p.comedianId === userId;
+    // Организатор, позвавший себя, отвечает на приглашение как комик, а остальным
+    // (резерв, убрать из состава) управляет как организатор.
+    const isComedian =
+      p.comedianId === userId && (!isOrganizer || comedianActions.includes(req.action));
     const staff = await findStaff(tx, event.id, userId);
     const resource = {
       event: {

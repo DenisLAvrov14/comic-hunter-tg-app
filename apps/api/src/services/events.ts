@@ -80,6 +80,7 @@ export function toMyParticipation(p: Participation): MyParticipation {
     autoAccepted: p.autoAccepted,
     isUrgent: p.isUrgent,
     counterProposal: p.counterProposal,
+    dayConfirmation: p.dayConfirmation,
   };
 }
 
@@ -89,7 +90,12 @@ export async function eventResource(
   event: Event,
   userId: string,
   opts: { viaLink?: boolean } = {},
-): Promise<EventResource & { participationRow: Participation | null }> {
+): Promise<
+  EventResource & {
+    participationRow: Participation | null;
+    hostStatus: 'invited' | 'accepted' | 'declined' | null;
+  }
+> {
   const [staff, participation] = await Promise.all([
     findStaff(db, event.id, userId),
     findUserParticipation(db, event.id, userId),
@@ -103,6 +109,7 @@ export async function eventResource(
     staff: staff ? { permissions: staff.permissions } : null,
     participation: participation ? { status: participation.status } : null,
     participationRow: participation ?? null,
+    hostStatus: staff?.status ?? null,
     viaLink: opts.viaLink,
   };
 }
@@ -149,6 +156,7 @@ export async function loadEventDetails(
       staffPermissions: resource.staff
         ? (resource.staff.permissions as Record<string, boolean>)
         : null,
+      hostStatus: resource.hostStatus,
       canApply: can({ userId }, 'event.apply', resource),
       participation: resource.participationRow
         ? toMyParticipation(resource.participationRow)
@@ -168,7 +176,8 @@ export async function loadEventDetails(
 export async function scheduleConflicts(
   db: DbOrTx,
   comedian: Pick<ComedianRow, 'userId' | 'travelBufferMinutes'>,
-  eventId: string,
+  /** Событие-кандидат (его не считаем); нет — проверяется ручная запись календаря. */
+  eventId: string | undefined,
   candidate: Window,
 ): Promise<ScheduleConflict[]> {
   const buffer = comedian.travelBufferMinutes;
@@ -292,8 +301,12 @@ export async function loadLineup(
     }),
   );
 
+  // Событие началось — на приглашения и заявки уже не ответят: они больше не ждут ответа.
+  const started = Date.now() >= event.startsAt.getTime();
+  const waiting = (i: LineupItem) =>
+    !started || !['pending', 'invited', 'counter_proposed'].includes(i.status);
   const by = (...statuses: Participation['status'][]) =>
-    items.filter((i) => statuses.includes(i.status));
+    items.filter((i) => statuses.includes(i.status) && waiting(i));
   const staff = await listStaff(db, event.id);
   return {
     version: event.lineupVersion,
@@ -302,6 +315,8 @@ export async function loadLineup(
     reserve: by('reserve'),
     applications: by('pending'),
     invitations: by('invited', 'counter_proposed'),
-    closed: by('rejected', 'declined', 'withdrawn', 'removed'),
+    closed: items.filter(
+      (i) => ['rejected', 'declined', 'withdrawn', 'removed'].includes(i.status) || !waiting(i),
+    ),
   };
 }

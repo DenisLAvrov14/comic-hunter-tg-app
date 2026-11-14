@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { processPhoto, UnsupportedImageError } from './images';
+import { LOGO_SIZE, processLogo, processPhoto, UnsupportedImageError } from './images';
 
 function image(width: number, height: number, format: 'png' | 'jpeg' = 'png') {
   return sharp({
@@ -44,5 +44,16 @@ describe('processPhoto', () => {
 
   it('отклоняет не-картинки', async () => {
     await expect(processPhoto(Buffer.from('hello'))).rejects.toBeInstanceOf(UnsupportedImageError);
+  });
+});
+
+describe('processLogo', () => {
+  it('обрезает до квадрата 256px в JPEG', async () => {
+    const meta = await sharp(await processLogo(await image(800, 400))).metadata();
+    expect(meta).toMatchObject({ format: 'jpeg', width: LOGO_SIZE, height: LOGO_SIZE });
+  });
+
+  it('не принимает не-картинки', async () => {
+    await expect(processLogo(Buffer.from('hello'))).rejects.toBeInstanceOf(UnsupportedImageError);
   });
 });

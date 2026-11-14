@@ -1,5 +1,7 @@
+import type { City } from '../schema';
+
 // Справочник городов. С марта 2024 весь Казахстан живёт в UTC+5 — IANA-зоны это учитывают.
-export const CITIES: ReadonlyArray<{ name: string; country: 'RU' | 'KZ'; timezone: string }> = [
+export const CITIES: ReadonlyArray<Omit<City, 'id'>> = [
   { name: 'Москва', country: 'RU', timezone: 'Europe/Moscow' },
   { name: 'Санкт-Петербург', country: 'RU', timezone: 'Europe/Moscow' },
   { name: 'Новосибирск', country: 'RU', timezone: 'Asia/Novosibirsk' },
@@ -25,6 +27,7 @@ export const CITIES: ReadonlyArray<{ name: string; country: 'RU' | 'KZ'; timezon
   { name: 'Калининград', country: 'RU', timezone: 'Europe/Kaliningrad' },
   { name: 'Сочи', country: 'RU', timezone: 'Europe/Moscow' },
   { name: 'Ярославль', country: 'RU', timezone: 'Europe/Moscow' },
+  { name: 'Нальчик', country: 'RU', timezone: 'Europe/Moscow' },
   { name: 'Алматы', country: 'KZ', timezone: 'Asia/Almaty' },
   { name: 'Астана', country: 'KZ', timezone: 'Asia/Almaty' },
   { name: 'Шымкент', country: 'KZ', timezone: 'Asia/Almaty' },
@@ -36,4 +39,17 @@ export const CITIES: ReadonlyArray<{ name: string; country: 'RU' | 'KZ'; timezon
   { name: 'Павлодар', country: 'KZ', timezone: 'Asia/Almaty' },
   { name: 'Костанай', country: 'KZ', timezone: 'Asia/Qostanay' },
   { name: 'Уральск', country: 'KZ', timezone: 'Asia/Oral' },
+  { name: 'Ташкент', country: 'UZ', timezone: 'Asia/Tashkent' },
+  { name: 'Бишкек', country: 'KG', timezone: 'Asia/Bishkek' },
+  { name: 'Душанбе', country: 'TJ', timezone: 'Asia/Dushanbe' },
+  { name: 'Минск', country: 'BY', timezone: 'Europe/Minsk' },
+  { name: 'Тбилиси', country: 'GE', timezone: 'Asia/Tbilisi' },
+  { name: 'Ереван', country: 'AM', timezone: 'Asia/Yerevan' },
+  { name: 'Белград', country: 'RS', timezone: 'Europe/Belgrade' },
+  { name: 'Варшава', country: 'PL', timezone: 'Europe/Warsaw' },
+  { name: 'Барселона', country: 'ES', timezone: 'Europe/Madrid' },
+  { name: 'Стамбул', country: 'TR', timezone: 'Europe/Istanbul' },
+  { name: 'Берлин', country: 'DE', timezone: 'Europe/Berlin' },
+  { name: 'Прага', country: 'CZ', timezone: 'Europe/Prague' },
+  { name: 'Амстердам', country: 'NL', timezone: 'Europe/Amsterdam' },
 ];

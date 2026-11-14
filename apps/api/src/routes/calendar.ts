@@ -14,7 +14,7 @@ import {
   listCalendarGigs,
   listAutoAcceptRules,
   listFeedGigs,
-  listManualGigs,
+  listFeedBusySlots,
   putFeedToken,
   searchOrganizers,
   upsertAutoAcceptRule,
@@ -33,12 +33,15 @@ import {
   type OrganizerCandidate,
 } from '@standup/shared';
 import { ApiError } from '../errors';
-import { buildIcs } from '../ics';
+import { buildFeedPage, buildIcs } from '../ics';
 
 const OrganizerParams = z.object({ organizerId: z.string().uuid() });
 const IdParams = z.object({ id: z.string().uuid() });
 const SearchQuery = z.object({ q: z.string().trim().max(64).optional() });
 const DAY = 86_400_000;
+
+const feedUrl = (publicBaseUrl: string, token: string) =>
+  `${publicBaseUrl.replace(/\/$/, '')}/cal/${token}`;
 
 /** Окна на сцене для выступлений комика (по составам их событий). */
 async function stageWindows(db: Db, gigs: Awaited<ReturnType<typeof listCalendarGigs>>) {
@@ -124,6 +127,8 @@ export const calendarRoutes: FastifyPluginAsync<{ db: Db; publicBaseUrl: string 
         field: 'endsAtLocal',
       });
     }
+    // Своё выступление ставится на любое время, даже вплотную к другому («час в час»):
+    // комик сам знает, успеет ли. Решение владельца продукта, SPEC §10.
     const slot = await createBusySlot(db, {
       userId: user.id,
       kind: body.kind,
@@ -196,8 +201,8 @@ export const calendarRoutes: FastifyPluginAsync<{ db: Db; publicBaseUrl: string 
   // --- Подписка на календарь ---
 
   const feedUrls = (token: string): CalendarFeed => {
-    const url = `${publicBaseUrl.replace(/\/$/, '')}/cal/${token}.ics`;
-    return { url, webcalUrl: url.replace(/^https?:\/\//, 'webcal://') };
+    const pageUrl = feedUrl(publicBaseUrl, token);
+    return { url: `${pageUrl}.ics`, pageUrl };
   };
 
   app.get('/me/calendar-feed', async (req): Promise<CalendarFeed> => {
@@ -213,26 +218,39 @@ export const calendarRoutes: FastifyPluginAsync<{ db: Db; publicBaseUrl: string 
   });
 };
 
-/** GET /cal/:token.ics — публичный, без авторизации; токен — 32 случайных байта. */
-export const icsRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) => {
+/**
+ * Публичные, без авторизации; токен — 32 случайных байта.
+ * GET /cal/:token.ics — лента, GET /cal/:token — страница подключения.
+ */
+export const icsRoutes: FastifyPluginAsync<{ db: Db; publicBaseUrl: string }> = async (
+  app,
+  { db, publicBaseUrl },
+) => {
   app.get(
     '/cal/:file',
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const { file } = z.object({ file: z.string().max(100) }).parse(req.params);
-      const m = /^([\w-]{40,64})\.ics$/.exec(file);
+      const m = /^([\w-]{40,64})(\.ics)?$/.exec(file);
       const user = m ? await findUserByFeedToken(db, m[1]!) : undefined;
       if (!user) throw new ApiError('NOT_FOUND');
+      if (!m![2]) {
+        return reply
+          .header('content-type', 'text/html; charset=utf-8')
+          .header('cache-control', 'no-store')
+          .header('referrer-policy', 'no-referrer')
+          .send(buildFeedPage(`${feedUrl(publicBaseUrl, m![1]!)}.ics`));
+      }
 
       const now = new Date();
-      const [gigs, manual] = await Promise.all([
+      const [gigs, busy] = await Promise.all([
         listFeedGigs(
           db,
           user.id,
           new Date(now.getTime() - 60 * DAY),
           new Date(now.getTime() - 14 * DAY),
         ),
-        listManualGigs(db, user.id, new Date(now.getTime() - 60 * DAY)),
+        listFeedBusySlots(db, user.id, new Date(now.getTime() - 60 * DAY)),
       ]);
       const windows = await stageWindows(
         db,
@@ -256,7 +274,7 @@ export const icsRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) => 
             Math.max(g.participation.updatedAt.getTime(), g.event.updatedAt.getTime()),
           ),
         })),
-        manual,
+        busy,
       });
       return reply
         .header('content-type', 'text/calendar; charset=utf-8')

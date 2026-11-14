@@ -1,8 +1,89 @@
 import { z } from 'zod';
 
-export const countries = ['RU', 'KZ'] as const;
+/** Календарная дата yyyy-MM-dd, которая действительно существует. */
+export const IsoDate = z.string().refine((s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const at = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === s;
+}, 'Формат даты: ГГГГ-ММ-ДД');
+
+export const TripInput = z.object({
+  cityId: z.number().int().positive(),
+  startsOn: IsoDate,
+  endsOn: IsoDate,
+});
+export type TripInput = z.infer<typeof TripInput>;
+
+export const Trip = TripInput.extend({ id: z.string().uuid() });
+export type Trip = z.infer<typeof Trip>;
+
+export const TripParams = z.object({ id: z.string().uuid() });
+
+export const countries = [
+  'RU',
+  'KZ',
+  'UZ',
+  'KG',
+  'TJ',
+  'BY',
+  'GE',
+  'AM',
+  'RS',
+  'PL',
+  'ES',
+  'TR',
+  'DE',
+  'CZ',
+  'NL',
+] as const;
 export const Country = z.enum(countries);
 export type Country = z.infer<typeof Country>;
+
+/** Регионы, по которым сгруппированы города в списках: Россия, Центральная Азия, Европа. */
+export const regions = ['RU', 'CA', 'EU'] as const;
+export type Region = (typeof regions)[number];
+
+const centralAsia: readonly Country[] = ['KZ', 'UZ', 'KG', 'TJ'];
+
+export function regionOf(country: Country): Region {
+  if (country === 'RU') return 'RU';
+  return centralAsia.includes(country) ? 'CA' : 'EU';
+}
+
+/** Города в фильтрах и форме события, по порядку. Остальные города есть только в профиле. */
+export const filterCityNames: Record<Region, readonly string[]> = {
+  RU: [
+    'Москва',
+    'Санкт-Петербург',
+    'Новосибирск',
+    'Екатеринбург',
+    'Казань',
+    'Красноярск',
+    'Нижний Новгород',
+    'Краснодар',
+    'Ростов-на-Дону',
+    'Самара',
+    'Воронеж',
+    'Пермь',
+    'Хабаровск',
+    'Саратов',
+    'Волгоград',
+    'Нальчик',
+  ],
+  CA: ['Алматы', 'Астана', 'Ташкент', 'Бишкек', 'Душанбе', 'Шымкент', 'Караганда'],
+  EU: [
+    'Минск',
+    'Тбилиси',
+    'Ереван',
+    'Белград',
+    'Варшава',
+    'Барселона',
+    'Стамбул',
+    'Берлин',
+    'Прага',
+    'Амстердам',
+  ],
+};
 
 export const City = z.object({
   id: z.number().int(),
@@ -28,6 +109,37 @@ export const linkTypes = [
 export const LinkType = z.enum(linkTypes);
 export type LinkType = z.infer<typeof LinkType>;
 
+/** Соцсети с отдельным полем в профиле; видео и прочее — списком ссылок. */
+export const socialLinkTypes = [
+  'telegram',
+  'instagram',
+  'youtube',
+  'vk',
+  'tiktok',
+] as const satisfies readonly LinkType[];
+export type SocialLinkType = (typeof socialLinkTypes)[number];
+
+const socialBase: Record<SocialLinkType, string> = {
+  telegram: 'https://t.me/',
+  instagram: 'https://instagram.com/',
+  youtube: 'https://youtube.com/@',
+  vk: 'https://vk.com/',
+  tiktok: 'https://www.tiktok.com/@',
+};
+
+/**
+ * Поле соцсети принимает ссылку или ник: «@name», «name», «t.me/name».
+ * Возвращает https-ссылку; пустое поле — null.
+ */
+export function socialUrl(type: SocialLinkType, raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  // Ссылка без схемы: есть точка до первого слэша.
+  if (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(value)) return `https://${value}`;
+  return socialBase[type] + value.replace(/^@/, '');
+}
+
 export const ProfileLink = z.object({
   type: LinkType,
   url: z
@@ -51,7 +163,8 @@ export const ComedianProfileInput = z.object({
   contact: text(128),
   category: ComedianCategory.optional(),
   bio: z.string().trim().max(1000).nullable().optional(),
-  links: z.array(ProfileLink).max(10).optional(),
+  // 5 соцсетей отдельными полями + видео и прочие ссылки.
+  links: z.array(ProfileLink).max(20).optional(),
   travelBufferMinutes: z.number().int().min(0).max(240).optional(),
   defaultSetMinutes: z.number().int().min(1).max(120).nullable().optional(),
   isSearchable: z.boolean().optional(),
@@ -104,6 +217,12 @@ export const Venue = z.object({
   address: z.string(),
   cityId: z.number().int(),
   timezone: z.string(),
+  /** Лого в списке площадок (квадрат). */
+  logoUrl: z.string().nullable(),
+  /** Фото площадки: превью и оригинал. */
+  photo: z.object({ url: z.string(), previewUrl: z.string() }).nullable(),
+  /** Менять лого и фото может тот, кто добавил площадку. */
+  canEdit: z.boolean(),
 });
 export type Venue = z.infer<typeof Venue>;
 

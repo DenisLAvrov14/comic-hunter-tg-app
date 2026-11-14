@@ -4,3 +4,4 @@ export * from './schedule';
 export * from './render';
 export * from './deliver';
 export * from './posts';
+export { dateTime as formatDateTime, time as formatTime } from './format';

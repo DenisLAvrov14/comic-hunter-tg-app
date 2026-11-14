@@ -68,9 +68,9 @@ export function can(user: Subject, action: EventAction, r: EventResource): boole
   switch (action) {
     case 'event.view':
       if (isOrganizer || isStaff || r.participation) return true;
-      // Черновик видят только организатор и штат.
-      if (r.event.status === 'draft') return false;
-      return r.event.recruitmentOpen || !!r.viaLink;
+      // Черновик видят только организатор и штат. Опубликованное событие видно всем — оно
+      // есть на «Карте» с составом; подать заявку можно только при открытом наборе или по ссылке.
+      return r.event.status !== 'draft';
 
     case 'event.apply':
       return (
@@ -92,11 +92,11 @@ export function can(user: Subject, action: EventAction, r: EventResource): boole
   }
 }
 
-/** Права ведущего по умолчанию при назначении. */
+/** Права ведущего при назначении: только смотреть, составом управляет организатор. */
 export function defaultHostPermissions(): Record<HostPermissionFlag, boolean> {
   return {
     can_reorder: false,
-    can_mark_attendance: true,
+    can_mark_attendance: false,
     can_call_reserve: false,
     can_notify_lineup: false,
   };

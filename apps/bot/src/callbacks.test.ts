@@ -10,6 +10,8 @@ describe('parseCallback', () => {
     [`iv:${id}:a`, { kind: 'invite', participationId: id, action: 'accept' }],
     [`iv:${id}:d`, { kind: 'invite', participationId: id, action: 'decline' }],
     [`rr:${id}`, { kind: 'reserve', participationId: id }],
+    [`hs:${id}:a`, { kind: 'host', eventId: id, value: 'accepted' }],
+    [`hs:${id}:d`, { kind: 'host', eventId: id, value: 'declined' }],
   ])('%s', (data, expected) => {
     expect(parseCallback(data)).toEqual(expected);
   });
@@ -51,6 +53,13 @@ describe('apiRequestFor', () => {
     expect(apiRequestFor({ kind: 'reserve', participationId: id })).toEqual({
       method: 'POST',
       path: `/participations/${id}/call-reserve`,
+    });
+  });
+  it('ответ ведущего → hosting события', () => {
+    expect(apiRequestFor({ kind: 'host', eventId: id, value: 'declined' })).toEqual({
+      method: 'POST',
+      path: `/events/${id}/hosting`,
+      payload: { value: 'declined' },
     });
   });
 });

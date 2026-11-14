@@ -17,7 +17,8 @@ import { dateTime, time } from './format';
 import { appLink, type LinkConfig } from './links';
 import type { InlineButton, OutgoingMessage } from './sender';
 
-const { participations, events, venues, comedianProfiles, organizerProfiles, users } = schema;
+const { participations, events, eventStaff, venues, comedianProfiles, organizerProfiles, users } =
+  schema;
 const t = ru.notify;
 
 export type Rendered =
@@ -179,14 +180,38 @@ export async function renderNotification(
     n.kind === 'broadcast' ||
     n.kind === 'new_application' ||
     n.kind === 'event_cancelled' ||
-    n.kind === 'event_changed'
+    n.kind === 'event_changed' ||
+    n.kind === 'host_invitation'
   ) {
     const e = n.eventId ? await loadEvent(db, n.eventId) : undefined;
     if (!e) return { skip: 'no_event' };
     const open = openButton(links, `e_${e.event.id}`);
     switch (n.kind) {
       case 'broadcast':
-        return msg(ru.messages.broadcast(e.event.title, String(n.payload.text ?? '')), [open]);
+        return msg(
+          ru.messages.broadcast(
+            e.event.title,
+            e.venue.name,
+            dateTime(e.event.startsAt, e.venue.timezone),
+            String(n.payload.text ?? ''),
+          ),
+          [open],
+        );
+      case 'host_invitation': {
+        if (ended(e.event)) return { skip: 'event_ended' };
+        const [staff] = await db
+          .select({ status: eventStaff.status })
+          .from(eventStaff)
+          .where(and(eq(eventStaff.eventId, e.event.id), eq(eventStaff.userId, n.userId)));
+        if (staff?.status !== 'invited') return { skip: 'answered' };
+        return msg(t.hostInvitation(await organizerName(db, e.event.organizerId), eventLine(e)), [
+          [
+            { text: t.accept, callbackData: `hs:${e.event.id}:a` },
+            { text: t.decline, callbackData: `hs:${e.event.id}:d` },
+          ],
+          open,
+        ]);
+      }
       case 'event_cancelled':
         return msg(t.eventCancelled(eventLine(e)));
       case 'event_changed':

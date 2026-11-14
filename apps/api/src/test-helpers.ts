@@ -49,6 +49,12 @@ type Method = 'GET' | 'PUT' | 'PATCH' | 'POST' | 'DELETE';
 export interface TestClient {
   userId: string;
   telegramId: number;
+  /** Загрузить файл multipart-запросом (фото, лого). */
+  upload: (
+    method: Method,
+    path: string,
+    file: Buffer,
+  ) => Promise<Awaited<ReturnType<App['inject']>>>;
   call: (
     method: Method,
     path: string,
@@ -101,6 +107,23 @@ export async function login(app: App, telegramId: number, firstName = 'Тест'
   return {
     userId: user.id,
     telegramId,
+    upload: (method, path, file) => {
+      const boundary = `----test${Math.random().toString(16).slice(2)}`;
+      const head = Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="f.png"\r\n` +
+          'Content-Type: application/octet-stream\r\n\r\n',
+      );
+      const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+      return app.inject({
+        method,
+        url: `/api/v1${path}`,
+        payload: Buffer.concat([head, file, tail]),
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': `multipart/form-data; boundary=${boundary}`,
+        },
+      });
+    },
     call: (method, path, payload) =>
       app.inject({
         method,

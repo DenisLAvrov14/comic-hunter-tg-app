@@ -1,48 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { ru } from '@standup/shared';
 import { useAuth, useMe } from './auth';
+import { ActiveRoleProvider, AppShell, MoreScreen, RoleHome } from './navigation';
 import { CalendarScreen } from './screens/Calendar';
+import { MapScreen } from './screens/Map';
 import { EventScreen, InboxScreen, OpenEventsScreen } from './screens/Comedian';
 import { Onboarding } from './screens/Onboarding';
 import { HostingScreen, LineupScreen } from './screens/Lineup';
-import { EventFormScreen, InviteScreen, MyEventsScreen } from './screens/Organizer';
+import {
+  ComediansScreen,
+  EventFormScreen,
+  InviteScreen,
+  MyEventsScreen,
+} from './screens/Organizer';
 import { ComedianProfileScreen, OrganizerProfileScreen, RolesScreen } from './screens/Profiles';
 import { SettingsScreen } from './screens/Settings';
 import { VenuesScreen } from './screens/Venues';
 
 const t = ru.app;
-
-function Home() {
-  const { me } = useMe();
-  const name = me.comedianProfile?.stageName ?? me.organizerProfile?.displayName ?? me.firstName;
-  return (
-    <div className="screen">
-      <h1>{t.hello(name)}</h1>
-      <p className="hint">{t.homeNote}</p>
-      <nav className="list">
-        {me.roles.includes('comedian') && (
-          <>
-            <Link to="/calendar">{t.menu.calendar}</Link>
-            <Link to="/open">{t.nav.open}</Link>
-            <Link to="/inbox">{t.nav.inbox}</Link>
-            <Link to="/profile">{t.menu.comedianProfile}</Link>
-          </>
-        )}
-        {me.roles.includes('organizer') && (
-          <>
-            <Link to="/my-events">{t.nav.myEvents}</Link>
-            <Link to="/organizer">{t.menu.organizerProfile}</Link>
-            <Link to="/venues">{t.menu.venues}</Link>
-          </>
-        )}
-        {me.roles.includes('host') && <Link to="/hosting">{t.nav.hosting}</Link>}
-        <Link to="/settings">{t.menu.notifications}</Link>
-        <Link to="/roles">{t.menu.roles}</Link>
-      </nav>
-    </div>
-  );
-}
 
 /** startapp: e_<event> → событие, j_<token> → запись по ссылке, i_<participation> → входящие. */
 function startTarget(param: string | null): string | null {
@@ -74,26 +50,33 @@ function AuthenticatedRoutes() {
   // до конца (там ещё шаг с уведомлениями).
   if (!me.onboarded && pathname !== '/welcome') return <Navigate to="/welcome" replace />;
   return (
-    <Routes>
-      <Route path="/welcome" element={<Onboarding />} />
-      <Route path="/profile" element={<ComedianProfileScreen />} />
-      <Route path="/organizer" element={<OrganizerProfileScreen />} />
-      <Route path="/venues" element={<VenuesScreen />} />
-      <Route path="/roles" element={<RolesScreen />} />
-      <Route path="/settings" element={<SettingsScreen />} />
-      <Route path="/calendar" element={<CalendarScreen />} />
-      <Route path="/open" element={<OpenEventsScreen />} />
-      <Route path="/inbox" element={<InboxScreen />} />
-      <Route path="/join/:token" element={<EventScreen />} />
-      <Route path="/my-events" element={<MyEventsScreen />} />
-      <Route path="/events/new" element={<EventFormScreen />} />
-      <Route path="/events/:id" element={<EventScreen />} />
-      <Route path="/events/:id/edit" element={<EventFormScreen />} />
-      <Route path="/events/:id/manage" element={<LineupScreen />} />
-      <Route path="/hosting" element={<HostingScreen />} />
-      <Route path="/events/:id/invite" element={<InviteScreen />} />
-      <Route path="*" element={<Home />} />
-    </Routes>
+    <ActiveRoleProvider>
+      <AppShell>
+        <Routes>
+          <Route path="/welcome" element={<Onboarding />} />
+          <Route path="/more" element={<MoreScreen />} />
+          <Route path="/profile" element={<ComedianProfileScreen />} />
+          <Route path="/organizer" element={<OrganizerProfileScreen />} />
+          <Route path="/venues" element={<VenuesScreen />} />
+          <Route path="/roles" element={<RolesScreen />} />
+          <Route path="/settings" element={<SettingsScreen />} />
+          <Route path="/calendar" element={<CalendarScreen />} />
+          <Route path="/map" element={<MapScreen />} />
+          <Route path="/open" element={<OpenEventsScreen />} />
+          <Route path="/inbox" element={<InboxScreen />} />
+          <Route path="/join/:token" element={<EventScreen />} />
+          <Route path="/my-events" element={<MyEventsScreen />} />
+          <Route path="/comedians" element={<ComediansScreen />} />
+          <Route path="/events/new" element={<EventFormScreen />} />
+          <Route path="/events/:id" element={<EventScreen />} />
+          <Route path="/events/:id/edit" element={<EventFormScreen />} />
+          <Route path="/events/:id/manage" element={<LineupScreen />} />
+          <Route path="/hosting" element={<HostingScreen />} />
+          <Route path="/events/:id/invite" element={<InviteScreen />} />
+          <Route path="*" element={<RoleHome />} />
+        </Routes>
+      </AppShell>
+    </ActiveRoleProvider>
   );
 }
 

@@ -8,13 +8,13 @@ import {
   RolePicker,
   comedianDraft,
   comedianInput,
-  comedianReady,
+  comedianRequired,
   organizerDraft,
   organizerInput,
-  organizerReady,
+  organizerRequired,
 } from '../forms';
 import { haptic } from '../telegram';
-import { BackButton, ErrorText, MainButton, Screen } from '../ui';
+import { BackButton, ErrorText, MainButton, MissingText, Screen, useRequired } from '../ui';
 
 const t = ru.app;
 
@@ -52,23 +52,24 @@ export function ComedianProfileScreen() {
   const { me, setUser } = useMe();
   const [draft, setDraft] = useState(() => comedianDraft(me));
   const save = useSave(setUser);
+  const required = useRequired(comedianRequired(draft));
 
   return (
-    <Screen title={t.profile.title} back={<BackButton to="/" />}>
+    <Screen title={t.profile.title} back={<BackButton to="/more" />}>
       <section className="card">
-        <ComedianFields draft={draft} onChange={setDraft} full />
+        <ComedianFields draft={draft} onChange={setDraft} full missing={required.missing} />
       </section>
       {me.comedianProfile && <Photos me={me} setUser={setUser} />}
+      <MissingText missing={required.missing} />
       <ErrorText error={save.error} />
       {save.saved && <p className="success">{t.saved}</p>}
       <MainButton
         text={t.save}
         loading={save.saving}
-        onClick={() =>
-          comedianReady(draft)
-            ? save.run(() => api.putComedianProfile(comedianInput(draft, true)))
-            : save.fail(t.required)
-        }
+        onClick={() => {
+          if (required.check())
+            void save.run(() => api.putComedianProfile(comedianInput(draft, true)));
+        }}
       />
     </Screen>
   );
@@ -141,22 +142,23 @@ export function OrganizerProfileScreen() {
   const { me, setUser } = useMe();
   const [draft, setDraft] = useState(() => organizerDraft(me));
   const save = useSave(setUser);
+  const required = useRequired(organizerRequired(draft));
 
   return (
-    <Screen title={t.organizer.title} back={<BackButton to="/" />}>
+    <Screen title={t.organizer.title} back={<BackButton to="/more" />}>
       <section className="card">
-        <OrganizerFields draft={draft} onChange={setDraft} full />
+        <OrganizerFields draft={draft} onChange={setDraft} full missing={required.missing} />
       </section>
+      <MissingText missing={required.missing} />
       <ErrorText error={save.error} />
       {save.saved && <p className="success">{t.saved}</p>}
       <MainButton
         text={t.save}
         loading={save.saving}
-        onClick={() =>
-          organizerReady(draft)
-            ? save.run(() => api.putOrganizerProfile(organizerInput(draft, true)))
-            : save.fail(t.required)
-        }
+        onClick={() => {
+          if (required.check())
+            void save.run(() => api.putOrganizerProfile(organizerInput(draft, true)));
+        }}
       />
     </Screen>
   );
@@ -168,15 +170,16 @@ export function RolesScreen() {
   const save = useSave(setUser);
 
   return (
-    <Screen title={t.rolesScreen.title} back={<BackButton to="/" />}>
+    <Screen title={t.rolesScreen.title} back={<BackButton to="/more" />}>
       <RolePicker value={roles} onChange={setRoles} />
       <ErrorText error={save.error} />
       {save.saved && <p className="success">{t.saved}</p>}
       <MainButton
         text={t.save}
-        disabled={roles.length === 0}
         loading={save.saving}
-        onClick={() => save.run(() => api.putRoles(roles))}
+        onClick={() =>
+          roles.length === 0 ? save.fail(t.chooseRole) : save.run(() => api.putRoles(roles))
+        }
       />
     </Screen>
   );

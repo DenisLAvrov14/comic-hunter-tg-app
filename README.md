@@ -57,6 +57,7 @@ pnpm install
 docker compose up -d postgres redis minio
 pnpm db:migrate
 pnpm seed                 # демо-данные; войти dev-входом можно под любым telegram_id из сида
+pnpm seed:catalog         # реальные площадки и демо-профили публичных комиков для ручной проверки
 pnpm dev                  # api :3000, bot, worker, miniapp :5173
 pnpm check                # lint + format + typecheck + test
 pnpm test:coverage        # покрытие packages/domain (порог 90%)

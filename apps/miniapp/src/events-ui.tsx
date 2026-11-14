@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ru,
   type EventSummary,
   type ParticipationAction,
   type ScheduleConflict,
+  type StaffStatus,
 } from '@standup/shared';
 import { api, ApiRequestError } from './api';
 import { formatDateTime, formatRange } from './format';
@@ -14,13 +15,67 @@ import { ErrorText } from './ui';
 
 const t = ru.app;
 
-export function EventCard({ e, to, extra }: { e: EventSummary; to: string; extra?: string }) {
+/** Ответ ведущего на приглашение: «Я веду» и карточка события. */
+export function HostAnswer({ eventId, status }: { eventId: string; status: StaffStatus }) {
+  const queryClient = useQueryClient();
+  const answer = useMutation({
+    mutationFn: (value: 'accepted' | 'declined') => api.answerHosting(eventId, value),
+    onSuccess: () => {
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey: ['hosting'] });
+      void queryClient.invalidateQueries({ queryKey: ['badges'] });
+      void queryClient.invalidateQueries({ queryKey: ['event', eventId] });
+    },
+    onError: () => haptic('error'),
+  });
+  return (
+    <div className="stack">
+      <strong>{status === 'invited' ? t.hosting.invited : t.hosting.accepted}</strong>
+      <div className="action-bar">
+        {status === 'invited' && (
+          <button disabled={answer.isPending} onClick={() => answer.mutate('accepted')}>
+            {t.hosting.accept}
+          </button>
+        )}
+        <button
+          className="outline danger-text"
+          disabled={answer.isPending}
+          onClick={() => {
+            if (status === 'invited' || window.confirm(t.hosting.declineConfirm))
+              answer.mutate('declined');
+          }}
+        >
+          {t.hosting.decline}
+        </button>
+      </div>
+      <ErrorText error={answer.error} />
+    </div>
+  );
+}
+
+export function EventCard({
+  e,
+  to,
+  extra,
+  city,
+  badge = 0,
+}: {
+  e: EventSummary;
+  to: string;
+  extra?: string;
+  /** Показывается, когда в списке события из разных городов. */
+  city?: string;
+  /** Счётчик того, что ждёт ответа (заявки), — как непрочитанные. */
+  badge?: number;
+}) {
   return (
     <Link className="event-card" to={to}>
+      {badge > 0 && <span className="badge-count">{badge}</span>}
       <span className="event-when">{formatDateTime(e.startsAt, e.timezone)}</span>
       <strong>{e.title}</strong>
       <span className="hint">
         {t.formats[e.format]} · {e.venue.name}
+        {city ? `, ${city}` : ''}
       </span>
       <span className="hint">
         {e.status !== 'recruiting' ? `${t.eventStatuses[e.status]} · ` : ''}
@@ -45,7 +100,12 @@ export function ConflictList({
       {conflicts.map((c, i) => (
         <span key={i}>
           {t.conflicts.item(
-            c.kind === 'busy' ? c.title || t.conflicts.busy : c.title,
+            c.title ||
+              (c.kind === 'busy'
+                ? t.conflicts.busy
+                : c.kind === 'manual_gig'
+                  ? t.calendar.manualGig
+                  : ''),
             c.venue,
             formatRange(c.start, c.end, c.timezone || timezone),
           )}
@@ -80,7 +140,11 @@ export function useParticipationAction(invalidate: unknown[][]) {
     try {
       await api.participationAction(id, { action, payload });
       haptic('success');
-      await Promise.all(invalidate.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+      await Promise.all(
+        [...invalidate, ['badges'], ['events', 'mine']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      );
       return true;
     } catch (e) {
       haptic('error');
@@ -114,7 +178,7 @@ export function ConflictPrompt({
   return (
     <div className="stack">
       <ConflictList conflicts={c.conflicts} timezone={timezone} />
-      <div className="row">
+      <div className="action-bar">
         <button className="danger" onClick={() => action.run(c.id, c.action, { force: true })}>
           {t.conflicts.acceptAnyway}
         </button>

@@ -2,7 +2,7 @@
 // Пересечения и свободное место проверяются отдельно (findConflicts, hasFreeSlot).
 import { formatInTimeZone } from 'date-fns-tz';
 
-export type EventFormatValue = 'open_mic' | 'showcase' | 'concert' | 'other';
+export type EventFormatValue = 'open_mic' | 'showcase' | 'concert' | 'other' | 'tryout' | 'paid';
 
 export interface AutoAcceptRule {
   enabled: boolean;

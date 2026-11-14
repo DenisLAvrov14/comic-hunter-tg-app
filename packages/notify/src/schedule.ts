@@ -21,7 +21,7 @@ import {
   type ParticipationActor,
 } from '@standup/domain';
 
-const { scheduledNotifications: sn, participations, events, eventStaff, users } = schema;
+const { scheduledNotifications: sn, participations, events, users } = schema;
 
 const NEW_APPLICATION_WINDOW_MS = 15 * 60_000;
 
@@ -68,16 +68,12 @@ export function cancelForEvent(db: DbOrTx, eventId: string) {
   return cancelWhere(db, eq(sn.eventId, eventId));
 }
 
-/** Получатели «для события»: организатор и ведущие. */
-async function eventStaffIds(db: DbOrTx, event: Pick<Event, 'id' | 'organizerId'>) {
-  const staff = await db
-    .select({ userId: eventStaff.userId })
-    .from(eventStaff)
-    .where(eq(eventStaff.eventId, event.id));
-  return [
-    event.organizerId,
-    ...staff.map((s) => s.userId).filter((id) => id !== event.organizerId),
-  ];
+/**
+ * Получатели алертов о составе. Только организатор: в алертах кнопка «Позвать резерв»,
+ * а ведущий составом не управляет.
+ */
+async function eventStaffIds(_db: DbOrTx, event: Pick<Event, 'id' | 'organizerId'>) {
+  return [event.organizerId];
 }
 
 // --- День выступления ---

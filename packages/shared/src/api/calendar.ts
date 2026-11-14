@@ -90,10 +90,10 @@ export const OrganizerCandidate = z.object({
 export type OrganizerCandidate = z.infer<typeof OrganizerCandidate>;
 
 export const CalendarFeed = z.object({
-  /** https-ссылка для Google Calendar («Добавить по URL»). */
+  /** https-ссылка на ленту для ручной подписки. */
   url: z.string(),
-  /** webcal:// — подписка в один тап на iPhone. */
-  webcalUrl: z.string(),
+  /** Страница подключения: с неё webcal:// для Apple и ссылка для Google. */
+  pageUrl: z.string(),
 });
 export type CalendarFeed = z.infer<typeof CalendarFeed>;
 

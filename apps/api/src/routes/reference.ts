@@ -1,28 +1,55 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 import {
   createVenue,
   findCity,
+  findVenue,
   getUserRoles,
   listCities,
   listVenuesByCity,
+  updateVenueImages,
   type Db,
   type Venue as VenueRow,
 } from '@standup/db';
 import { VenueInput, VenuesQuery, type City, type Venue } from '@standup/shared';
 import { ApiError } from '../errors';
+import { processLogo, processPhoto } from '../images';
+import type { FileStorage } from '../storage';
+import { processImage, readUpload } from '../upload';
 
-function toVenue(v: VenueRow): Venue {
-  return { id: v.id, name: v.name, address: v.address, cityId: v.cityId, timezone: v.timezone };
+export function toVenue(storage: FileStorage, v: VenueRow, userId: string): Venue {
+  return {
+    id: v.id,
+    name: v.name,
+    address: v.address,
+    cityId: v.cityId,
+    timezone: v.timezone,
+    logoUrl: v.logoS3Key ? storage.publicUrl(v.logoS3Key) : null,
+    photo:
+      v.photoS3Key && v.photoPreviewS3Key
+        ? {
+            url: storage.publicUrl(v.photoS3Key),
+            previewUrl: storage.publicUrl(v.photoPreviewS3Key),
+          }
+        : null,
+    canEdit: v.createdBy === userId,
+  };
 }
 
-export const referenceRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) => {
+const ImageParams = z.object({ id: z.string().uuid(), kind: z.enum(['logo', 'photo']) });
+
+export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = async (
+  app,
+  { db, storage },
+) => {
   app.addHook('onRequest', app.authenticate);
 
   app.get('/cities', async (): Promise<City[]> => listCities(db));
 
   app.get('/venues', async (req): Promise<Venue[]> => {
     const { city } = VenuesQuery.parse(req.query);
-    return (await listVenuesByCity(db, city)).map(toVenue);
+    return (await listVenuesByCity(db, city)).map((v) => toVenue(storage, v, req.user.sub));
   });
 
   app.post('/venues', async (req, reply): Promise<Venue> => {
@@ -38,6 +65,65 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db 
       createdBy: req.user.sub,
     });
     reply.status(201);
-    return toVenue(venue);
+    return toVenue(storage, venue, req.user.sub);
+  });
+
+  /** Площадка, которую может менять текущий пользователь (тот, кто её добавил). */
+  async function editableVenue(id: string, userId: string): Promise<VenueRow> {
+    const venue = await findVenue(db, id);
+    if (!venue) throw new ApiError('NOT_FOUND');
+    if (venue.createdBy !== userId) throw new ApiError('FORBIDDEN');
+    return venue;
+  }
+
+  async function dropFiles(keys: Array<string | null>) {
+    const existing = keys.filter((k): k is string => !!k);
+    if (existing.length) await storage.delete(existing).catch(() => {});
+  }
+
+  // Ключи под photos/ — этот префикс открыт на чтение (см. storage).
+  app.put(
+    '/venues/:id/:kind',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req): Promise<Venue> => {
+      const { id, kind } = ImageParams.parse(req.params);
+      const venue = await editableVenue(id, req.user.sub);
+      const input = await readUpload(req);
+      const file = randomUUID();
+      let updated: VenueRow;
+      if (kind === 'logo') {
+        const logo = await processImage(() => processLogo(input));
+        const key = `photos/venues/${id}/${file}_logo.jpg`;
+        await storage.put(key, logo, 'image/jpeg');
+        updated = await updateVenueImages(db, id, { logoS3Key: key });
+        await dropFiles([venue.logoS3Key]);
+      } else {
+        const photo = await processImage(() => processPhoto(input));
+        const key = `photos/venues/${id}/${file}.jpg`;
+        const previewKey = `photos/venues/${id}/${file}_400.jpg`;
+        await storage.put(key, photo.original, 'image/jpeg');
+        await storage.put(previewKey, photo.preview, 'image/jpeg');
+        updated = await updateVenueImages(db, id, {
+          photoS3Key: key,
+          photoPreviewS3Key: previewKey,
+        });
+        await dropFiles([venue.photoS3Key, venue.photoPreviewS3Key]);
+      }
+      return toVenue(storage, updated, req.user.sub);
+    },
+  );
+
+  app.delete('/venues/:id/:kind', async (req): Promise<Venue> => {
+    const { id, kind } = ImageParams.parse(req.params);
+    const venue = await editableVenue(id, req.user.sub);
+    const updated = await updateVenueImages(
+      db,
+      id,
+      kind === 'logo' ? { logoS3Key: null } : { photoS3Key: null, photoPreviewS3Key: null },
+    );
+    await dropFiles(
+      kind === 'logo' ? [venue.logoS3Key] : [venue.photoS3Key, venue.photoPreviewS3Key],
+    );
+    return toVenue(storage, updated, req.user.sub);
   });
 };

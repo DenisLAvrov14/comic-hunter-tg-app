@@ -20,7 +20,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  hostPermissionKeys,
   ru,
   type EventDetails,
   type Lineup,
@@ -34,11 +33,12 @@ import {
   ConflictList,
   ConflictPrompt,
   EventCard,
+  HostAnswer,
   useParticipationAction,
 } from '../events-ui';
 import { formatTime } from '../format';
 import { haptic, setVerticalSwipes } from '../telegram';
-import { BackButton, ErrorText, Screen, TextField } from '../ui';
+import { BackButton, ErrorText, MissingText, Screen, TextField, useRequired } from '../ui';
 
 const t = ru.app;
 const l = t.lineup;
@@ -83,14 +83,12 @@ export function LineupScreen() {
 
   if (eventQ.isPending) return <p className="center hint">{t.loading}</p>;
   const event = eventQ.data;
-  if (!event || (!event.viewer.isOrganizer && !event.viewer.staffPermissions)) {
+  // Управляет только организатор; ведущий смотрит событие на обычной карточке.
+  if (!event?.viewer.isOrganizer) {
     return <p className="center hint">{t.events.notFound}</p>;
   }
   return (
-    <Screen
-      title={event.title}
-      back={<BackButton to={event.viewer.isOrganizer ? '/my-events' : '/hosting'} />}
-    >
+    <Screen title={event.title} back={<BackButton to="/my-events" />}>
       <LineupBody event={event} lineup={lineupQ.data} rights={rightsOf(event)} />
     </Screen>
   );
@@ -133,7 +131,7 @@ function LineupBody({
       <div className="tabs">
         {tabs.map((k) => (
           <button key={k} className={tab === k ? 'tab active' : 'tab'} onClick={() => setTab(k)}>
-            {t.manage.tabs[k]}
+            <span className="tab-label">{t.manage.tabs[k]}</span>
             {(lineup?.[k].length ?? 0) > 0 && <span className="count">{lineup![k].length}</span>}
           </button>
         ))}
@@ -161,12 +159,20 @@ function LineupBody({
       ) : tab === 'applications' ? (
         <Applications event={event} items={lineup.applications} action={action} active={active} />
       ) : (
-        <SimpleList
-          event={event}
-          items={lineup[tab]}
-          action={action}
-          disabled={!active || !rights.organizer}
-        />
+        <>
+          <SimpleList
+            event={event}
+            items={lineup[tab]}
+            action={action}
+            disabled={!active || !rights.organizer}
+          />
+          {tab === 'invitations' && (
+            <ClosedList
+              event={event}
+              items={lineup.closed.filter((i) => i.source === 'invitation')}
+            />
+          )}
+        </>
       )}
 
       <Tools event={event} lineup={lineup} rights={rights} active={active} />
@@ -236,6 +242,8 @@ function AcceptedList({
 
   if (order.length === 0) return <p className="hint">{t.manage.empty}</p>;
   const canDrag = rights.reorder && active;
+  // Отмечать «пришёл / не пришёл» имеет смысл, когда событие уже началось.
+  const started = Date.now() >= new Date(event.startsAt).getTime();
   return (
     <>
       {canDrag && order.length > 1 && <p className="hint">{l.dragHint}</p>}
@@ -260,10 +268,14 @@ function AcceptedList({
               <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
                 <ItemHead item={{ ...item, position: i + 1 }} timezone={event.timezone} />
                 <DayStatus item={item} />
-                <div className="row wrap">
-                  {rights.attendance && active && <Attendance item={item} eventId={event.id} />}
+                {rights.attendance && active && started && (
+                  <div className="action-bar">
+                    <Attendance item={item} eventId={event.id} />
+                  </div>
+                )}
+                <div className="action-bar">
                   {rights.callReserve && active && lineup.reserve.length > 0 && (
-                    <button className="secondary" onClick={() => onReplace(item)}>
+                    <button className="outline" onClick={() => onReplace(item)}>
                       {l.replace}
                     </button>
                   )}
@@ -277,7 +289,7 @@ function AcceptedList({
                     ).map(([a, label]) => (
                       <button
                         key={a}
-                        className="secondary"
+                        className={a === 'remove' ? 'outline danger-text' : 'outline'}
                         disabled={action.busy !== null}
                         onClick={() => action.run(item.id, a)}
                       >
@@ -371,7 +383,7 @@ function Attendance({ item, eventId }: { item: LineupItem; eventId: string }) {
       {(['present', 'absent'] as const).map((v) => (
         <button
           key={v}
-          className={item.attendance === v ? '' : 'secondary'}
+          className={item.attendance === v ? '' : 'outline'}
           disabled={mark.isPending}
           onClick={() => mark.mutate(item.attendance === v ? 'unknown' : v)}
         >
@@ -417,7 +429,7 @@ function Applications({
       {selected.length > 0 && (
         <div className="bulk">
           <span className="hint">{l.selected(selected.length)}</span>
-          <div className="row wrap">
+          <div className="action-bar">
             <button disabled={disabled} onClick={() => bulk('accept')}>
               {l.acceptSelected}
             </button>
@@ -484,11 +496,17 @@ function RowActions({
   const actions = rowActions[item.status] ?? [];
   if (actions.length === 0) return null;
   return (
-    <div className="row wrap">
+    <div className="action-bar">
       {actions.map(([a, label]) => (
         <button
           key={a}
-          className={a === 'accept' || a === 'promote' ? '' : 'secondary'}
+          className={
+            a === 'accept' || a === 'promote'
+              ? ''
+              : a === 'reject' || a === 'remove'
+                ? 'outline danger-text'
+                : 'outline'
+          }
           disabled={disabled}
           onClick={() => action.run(item.id, a)}
         >
@@ -543,6 +561,33 @@ function SimpleList({
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Приглашения, на которые уже не ждём ответа: отказ, снятие, или событие началось без ответа.
+ * Видно, кто именно отказался, — чтобы не путать с ожидающими.
+ */
+function ClosedList({ event, items }: { event: EventDetails; items: LineupItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <>
+      <h2 className="section-title">{l.closedInvitations}</h2>
+      <div className="list">
+        {items.map((item) => (
+          <div key={item.id} className="lineup-row muted">
+            <ItemHead item={item} timezone={event.timezone} />
+            <span className={item.status === 'declined' ? 'danger-text' : 'hint'}>
+              {item.status === 'declined'
+                ? l.declinedInvite
+                : item.status === 'invited'
+                  ? l.noAnswer
+                  : t.participationStatuses[item.status]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -606,7 +651,7 @@ function Replacement({
         </div>
       )}
       <ErrorText error={call.error} />
-      <div className="row">
+      <div className="action-bar">
         <button disabled={selected.length === 0 || call.isPending} onClick={() => call.mutate()}>
           {l.call(selected.length)}
         </button>
@@ -650,6 +695,7 @@ function Tools({
     mutationFn: () => api.posterText(event.id),
     onSuccess: (r) => copy('poster', r.text),
   });
+  const broadcastRequired = useRequired([[l.broadcastText, text.trim() !== '']]);
   const broadcast = useMutation({
     mutationFn: () => api.broadcast(event.id, text.trim()),
     onSuccess: () => {
@@ -683,15 +729,17 @@ function Tools({
         <section className="card">
           <h2>{l.broadcast}</h2>
           <TextField
-            label={l.broadcast}
+            label={l.broadcastText}
             placeholder={l.broadcastPlaceholder}
             multiline
             value={text}
+            invalid={broadcastRequired.isMissing(l.broadcastText)}
             onChange={setText}
           />
+          <MissingText missing={broadcastRequired.missing} />
           <button
-            disabled={text.trim() === '' || broadcast.isPending}
-            onClick={() => broadcast.mutate()}
+            disabled={broadcast.isPending}
+            onClick={() => broadcastRequired.check() && broadcast.mutate()}
           >
             {l.broadcastSend}
           </button>
@@ -709,38 +757,15 @@ function Tools({
       {rights.organizer && active && event.status !== 'draft' && <Posts event={event} />}
 
       {rights.organizer && active && (
-        <section className="card">
-          <h2>{t.manage.link}</h2>
-          {link ? (
-            <>
-              <code className="link">{link}</code>
-              <div className="row wrap">
-                <button onClick={() => copy('link', link)}>
-                  {copied === 'link' ? t.manage.copied : t.manage.copyLink}
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    if (window.confirm(t.manage.rotateConfirm)) {
-                      setCopied(null);
-                      eventMutation.mutate(() => api.rotateLink(event.id));
-                    }
-                  }}
-                >
-                  {t.manage.rotateLink}
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="hint">{t.manage.linkNotConfigured}</p>
-          )}
-        </section>
+        <button className="secondary" disabled={!link} onClick={() => link && copy('link', link)}>
+          {copied === 'link' ? t.manage.copied : t.manage.copyLink}
+        </button>
       )}
 
       {rights.organizer && (
         <>
           <ErrorText error={eventMutation.error} />
-          <div className="row wrap">
+          <div className="action-bar">
             <button
               className="secondary"
               onClick={() => eventMutation.mutate(() => api.duplicateEvent(event.id))}
@@ -782,43 +807,28 @@ function Hosts({ event, staff }: { event: EventDetails; staff: StaffMember[] }) 
       queryClient.setQueryData(['lineup', event.id], fresh);
     },
   });
-  const perms = (m: Pick<StaffMember, 'permissions'>) =>
-    Object.fromEntries(hostPermissionKeys.map((k) => [k, !!m.permissions[k]])) as Record<
-      (typeof hostPermissionKeys)[number],
-      boolean
-    >;
 
   return (
     <section className="card">
       <h2>{l.hosts}</h2>
       {staff.map((m) => (
-        <div key={m.userId} className="stack">
-          <div className="row">
-            <strong className="grow">
+        <div key={m.userId} className="row host-row">
+          <span className="grow stack-tight">
+            <strong>
               {m.name}
               {m.username && <span className="hint"> @{m.username}</span>}
             </strong>
-            <button
-              className="secondary"
-              onClick={() => update.mutate(() => api.deleteStaff(event.id, m.userId))}
-            >
-              {l.removeHost}
-            </button>
-          </div>
-          {hostPermissionKeys.map((k) => (
-            <label key={k} className="checkbox">
-              <input
-                type="checkbox"
-                checked={!!m.permissions[k]}
-                onChange={(e) =>
-                  update.mutate(() =>
-                    api.putStaff(event.id, m.userId, { ...perms(m), [k]: e.target.checked }),
-                  )
-                }
-              />
-              <span>{l.permissions[k]}</span>
-            </label>
-          ))}
+            <span className={m.status === 'declined' ? 'danger-text' : 'hint'}>
+              {l.hostStatuses[m.status]}
+            </span>
+          </span>
+          <button
+            className="small secondary"
+            disabled={update.isPending}
+            onClick={() => update.mutate(() => api.deleteStaff(event.id, m.userId))}
+          >
+            {l.removeHost}
+          </button>
         </div>
       ))}
       {adding ? (
@@ -833,10 +843,11 @@ function Hosts({ event, staff }: { event: EventDetails; staff: StaffMember[] }) 
                 className="secondary"
                 onClick={() => {
                   setAdding(false);
+                  // Ведущий только смотрит: прав на состав нет.
                   update.mutate(() =>
                     api.putStaff(event.id, h.userId, {
                       can_reorder: false,
-                      can_mark_attendance: true,
+                      can_mark_attendance: false,
                       can_call_reserve: false,
                       can_notify_lineup: false,
                     }),
@@ -924,11 +935,11 @@ function Posts({ event }: { event: EventDetails }) {
   );
 }
 
-/** «События, где я ведущий». */
+/** «События, где я ведущий»: когда и где, и ответ на приглашение. */
 export function HostingScreen() {
   const { data, error, isPending } = useQuery({ queryKey: ['hosting'], queryFn: api.hosting });
   return (
-    <Screen title={t.hosting.title} back={<BackButton to="/" />}>
+    <Screen title={t.hosting.title}>
       {isPending ? (
         <p className="hint">{t.loading}</p>
       ) : error ? (
@@ -937,8 +948,11 @@ export function HostingScreen() {
         <p className="hint">{t.hosting.empty}</p>
       ) : (
         <div className="list">
-          {data.map((e) => (
-            <EventCard key={e.id} e={e} to={`/events/${e.id}/manage`} />
+          {data.map(({ event, status }) => (
+            <section key={event.id} className="card">
+              <EventCard e={event} to={`/events/${event.id}`} />
+              <HostAnswer eventId={event.id} status={status} />
+            </section>
           ))}
         </div>
       )}

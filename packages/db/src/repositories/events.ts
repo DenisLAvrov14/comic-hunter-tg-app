@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gte, inArray, lte, ne, not, or, sql } from 'drizzle-orm';
 import type { Db } from '../client';
 import {
   busySlots,
-  comedianPhotos,
   comedianProfiles,
+  comedianTrips,
   eventStaff,
   events,
   organizerProfiles,
@@ -13,6 +13,7 @@ import {
   users,
   venues,
   type BusySlot,
+  type ComedianTrip,
   type Event,
   type OrganizerProfile,
   type Participation,
@@ -107,12 +108,17 @@ export async function findEventByLinkToken(db: DbOrTx, token: string) {
 /** Открытые наборы в городе: «Ищут комиков». */
 export function listOpenEvents(
   db: DbOrTx,
-  q: { cityId: number; from: Date; to?: Date; format?: Event['format'] },
+  q: {
+    cityId?: number;
+    from: Date;
+    to?: Date;
+    format?: Event['format'];
+  },
 ): Promise<EventWithRefs[]> {
   return eventWithRefsQuery(db)
     .where(
       and(
-        eq(venues.cityId, q.cityId),
+        q.cityId ? eq(venues.cityId, q.cityId) : undefined,
         eq(events.status, 'recruiting'),
         eq(events.recruitmentOpen, true),
         gte(events.startsAt, q.from),
@@ -122,6 +128,87 @@ export function listOpenEvents(
     )
     .orderBy(asc(events.startsAt))
     .limit(100);
+}
+
+/**
+ * «Карта»: опубликованные события на дату. Дата сравнивается по местному времени площадки,
+ * поэтому в списке «Все города» каждое событие попадает в свой день.
+ */
+export function listEventsOnDate(
+  db: DbOrTx,
+  q: { cityId?: number; date: string },
+): Promise<EventWithRefs[]> {
+  return eventWithRefsQuery(db)
+    .where(
+      and(
+        q.cityId ? eq(venues.cityId, q.cityId) : undefined,
+        inArray(events.status, ['recruiting', 'lineup_locked', 'finished']),
+        sql`(${events.startsAt} at time zone ${venues.timezone})::date = ${q.date}::date`,
+      ),
+    )
+    .orderBy(asc(events.startsAt))
+    .limit(200);
+}
+
+/** Сколько участий в этих статусах у каждого события. */
+export async function countParticipationsByEvent(
+  db: DbOrTx,
+  eventIds: string[],
+  statuses: ParticipationStatusValue[],
+): Promise<Map<string, number>> {
+  if (eventIds.length === 0) return new Map();
+  const rows = await db
+    .select({ eventId: participations.eventId, n: sql<number>`count(*)::int` })
+    .from(participations)
+    .where(and(inArray(participations.eventId, eventIds), inArray(participations.status, statuses)))
+    .groupBy(participations.eventId);
+  return new Map(rows.map((r) => [r.eventId, r.n]));
+}
+
+/** Счётчики для меню: что ждёт ответа пользователя в предстоящих событиях. */
+export async function countBadges(
+  db: DbOrTx,
+  userId: string,
+  now: Date,
+): Promise<{ inbox: number; events: number; hosting: number }> {
+  const upcoming = sql`${events.windowEndsAt} >= ${ts(now)} and ${events.status} not in ('cancelled', 'finished')`;
+  const [inbox, organizer, hosting] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(participations)
+      .innerJoin(events, eq(events.id, participations.eventId))
+      .where(
+        and(
+          eq(participations.comedianId, userId),
+          or(
+            and(eq(participations.source, 'invitation'), eq(participations.status, 'invited')),
+            and(eq(participations.isUrgent, true), eq(participations.status, 'reserve')),
+          ),
+          upcoming,
+        ),
+      ),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(participations)
+      .innerJoin(events, eq(events.id, participations.eventId))
+      .where(
+        and(
+          eq(events.organizerId, userId),
+          inArray(participations.status, ['pending', 'counter_proposed']),
+          upcoming,
+        ),
+      ),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(eventStaff)
+      .innerJoin(events, eq(events.id, eventStaff.eventId))
+      .where(and(eq(eventStaff.userId, userId), eq(eventStaff.status, 'invited'), upcoming)),
+  ]);
+  return {
+    inbox: inbox[0]?.n ?? 0,
+    events: organizer[0]?.n ?? 0,
+    hosting: hosting[0]?.n ?? 0,
+  };
 }
 
 /** События организатора: предстоящие по возрастанию, прошедшие — по убыванию. */
@@ -354,10 +441,12 @@ export interface ComedianRow {
   photoKey: string | null;
 }
 
+// Псевдоним обязателен: без него drizzle пишет в подзапросе голое "user_id", и условие
+// сравнивает колонку саму с собой — всем комикам доставалось одно и то же чужое фото.
 const firstPhoto = sql<string | null>`(
-  select ${comedianPhotos.previewS3Key} from ${comedianPhotos}
-  where ${comedianPhotos.userId} = ${comedianProfiles.userId}
-  order by ${comedianPhotos.sortOrder}, ${comedianPhotos.createdAt} limit 1
+  select ph.preview_s3_key from comedian_photos ph
+  where ph.user_id = ${comedianProfiles}.user_id
+  order by ph.sort_order, ph.created_at limit 1
 )`;
 
 const comedianColumns = {
@@ -372,24 +461,106 @@ const comedianColumns = {
   photoKey: firstPhoto,
 };
 
+/** Поездка попадает в запрос: идёт в эту дату, а без даты — ещё не закончилась. */
+const tripInTime = (q: { date?: string; today: string }) =>
+  q.date
+    ? and(lte(comedianTrips.startsOn, q.date), gte(comedianTrips.endsOn, q.date))
+    : gte(comedianTrips.endsOn, q.today);
+
 export function searchComedians(
   db: DbOrTx,
-  q: { text?: string; cityId?: number; category?: ComedianRow['category']; limit?: number },
+  q: {
+    text?: string;
+    cityId?: number;
+    category?: ComedianRow['category'];
+    limit?: number;
+    /** С городом: кто в этом городе в этот день, с учётом поездок. */
+    date?: string;
+    today: string;
+  },
 ): Promise<ComedianRow[]> {
   const pattern = q.text ? likePattern(q.text) : null;
+  const trips = (where: ReturnType<typeof and>) =>
+    exists(
+      db
+        .select({ id: comedianTrips.id })
+        .from(comedianTrips)
+        .where(and(eq(comedianTrips.comedianId, comedianProfiles.userId), where)),
+    );
+  const guest = q.cityId ? trips(and(eq(comedianTrips.cityId, q.cityId), tripInTime(q))) : null;
+  // В эту дату местный комик сам уехал в другой город.
+  const away =
+    q.cityId && q.date ? trips(and(ne(comedianTrips.cityId, q.cityId), tripInTime(q))) : null;
+  return (
+    db
+      .select(comedianColumns)
+      .from(comedianProfiles)
+      .where(
+        and(
+          eq(comedianProfiles.isSearchable, true),
+          pattern ? sql`${comedianProfiles.stageName} ilike ${pattern}` : undefined,
+          q.cityId
+            ? or(and(eq(comedianProfiles.cityId, q.cityId), away ? not(away) : undefined), guest!)
+            : undefined,
+          q.category ? eq(comedianProfiles.category, q.category) : undefined,
+        ),
+      )
+      // Гости первыми: ради них и смотрят дату, и в лимит они должны попасть.
+      .orderBy(...(guest ? [desc(guest)] : []), asc(comedianProfiles.stageName))
+      .limit(q.limit ?? 50)
+  );
+}
+
+/** Поездки, которые надо показать рядом с найденными комиками. Без города и даты — никакие. */
+export function listTripsForSearch(
+  db: DbOrTx,
+  ids: string[],
+  q: { cityId?: number; date?: string; today: string },
+): Promise<ComedianTrip[]> {
+  if (ids.length === 0 || (!q.cityId && !q.date)) return Promise.resolve([]);
   return db
-    .select(comedianColumns)
-    .from(comedianProfiles)
+    .select()
+    .from(comedianTrips)
     .where(
       and(
-        eq(comedianProfiles.isSearchable, true),
-        pattern ? sql`${comedianProfiles.stageName} ilike ${pattern}` : undefined,
-        q.cityId ? eq(comedianProfiles.cityId, q.cityId) : undefined,
-        q.category ? eq(comedianProfiles.category, q.category) : undefined,
+        inArray(comedianTrips.comedianId, ids),
+        q.cityId ? eq(comedianTrips.cityId, q.cityId) : undefined,
+        tripInTime(q),
       ),
     )
-    .orderBy(asc(comedianProfiles.stageName))
-    .limit(q.limit ?? 50);
+    .orderBy(asc(comedianTrips.startsOn));
+}
+
+export function listComedianTrips(
+  db: DbOrTx,
+  comedianId: string,
+  today: string,
+): Promise<ComedianTrip[]> {
+  return db
+    .select()
+    .from(comedianTrips)
+    .where(and(eq(comedianTrips.comedianId, comedianId), gte(comedianTrips.endsOn, today)))
+    .orderBy(asc(comedianTrips.startsOn));
+}
+
+export async function createComedianTrip(
+  db: DbOrTx,
+  data: { comedianId: string; cityId: number; startsOn: string; endsOn: string },
+): Promise<ComedianTrip> {
+  const [row] = await db.insert(comedianTrips).values(data).returning();
+  return row!;
+}
+
+export async function deleteComedianTrip(
+  db: DbOrTx,
+  id: string,
+  comedianId: string,
+): Promise<boolean> {
+  const rows = await db
+    .delete(comedianTrips)
+    .where(and(eq(comedianTrips.id, id), eq(comedianTrips.comedianId, comedianId)))
+    .returning({ id: comedianTrips.id });
+  return rows.length > 0;
 }
 
 export function findComedians(db: DbOrTx, ids: string[]): Promise<ComedianRow[]> {
@@ -417,19 +588,46 @@ export async function countPastGigs(db: DbOrTx, comedianId: string, now: Date): 
   return row?.n ?? 0;
 }
 
+/** Позвать ведущего. Отказавшегося можно позвать снова — он опять получит приглашение. */
 export async function upsertStaff(
   db: DbOrTx,
   data: { eventId: string; userId: string; permissions: Record<string, boolean> },
 ) {
   const [row] = await db
     .insert(eventStaff)
-    .values({ ...data, role: 'host' })
+    .values({ ...data, role: 'host', status: 'invited' })
     .onConflictDoUpdate({
       target: [eventStaff.eventId, eventStaff.userId],
-      set: { permissions: data.permissions },
+      set: {
+        permissions: data.permissions,
+        status: sql`case when ${eventStaff.status} = 'declined' then 'invited'::staff_status else ${eventStaff.status} end`,
+      },
     })
     .returning();
   return row!;
+}
+
+export async function setStaffStatus(
+  db: DbOrTx,
+  eventId: string,
+  userId: string,
+  status: 'accepted' | 'declined',
+) {
+  const [row] = await db
+    .update(eventStaff)
+    .set({ status })
+    .where(and(eq(eventStaff.eventId, eventId), eq(eventStaff.userId, userId)))
+    .returning();
+  return row;
+}
+
+/** Статусы ведущего по событиям — для «Я веду». */
+export function listStaffStatuses(db: DbOrTx, userId: string, eventIds: string[]) {
+  if (eventIds.length === 0) return Promise.resolve([]);
+  return db
+    .select({ eventId: eventStaff.eventId, status: eventStaff.status })
+    .from(eventStaff)
+    .where(and(eq(eventStaff.userId, userId), inArray(eventStaff.eventId, eventIds)));
 }
 
 export async function deleteStaff(db: DbOrTx, eventId: string, userId: string) {
@@ -444,6 +642,7 @@ export function listStaff(db: DbOrTx, eventId: string) {
     .select({
       userId: eventStaff.userId,
       permissions: eventStaff.permissions,
+      status: eventStaff.status,
       name: sql<string>`coalesce(${comedianProfiles.stageName}, ${organizerProfiles.displayName}, ${users.firstName})`,
       username: users.telegramUsername,
     })

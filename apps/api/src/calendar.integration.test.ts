@@ -183,6 +183,15 @@ describe.skipIf(!TEST_DATABASE_URL)('Календарь и автопринят�
       venueText: 'Ресторан',
     });
     expect(manual.statusCode).toBe(201);
+    // Своё выступление ставится и вплотную, и поверх другого: комик сам решает, успеет ли.
+    const twice = await z.call('POST', '/me/busy-slots', {
+      kind: 'manual_gig',
+      startsAtLocal: `${day}T18:00`,
+      endsAtLocal: `${day}T20:00`,
+      venueText: 'Другой зал',
+    });
+    expect(twice.statusCode).toBe(201);
+    expect((await z.call('DELETE', `/me/busy-slots/${twice.json().id}`)).statusCode).toBe(204);
 
     const cal = (
       await z.call(
@@ -218,12 +227,24 @@ describe.skipIf(!TEST_DATABASE_URL)('Календарь и автопринят�
       endsAtLocal: `${day}T21:30`,
       title: 'Свой концерт',
     });
+    await w.call('POST', '/me/busy-slots', {
+      kind: 'busy',
+      startsAtLocal: `${day}T22:00`,
+      endsAtLocal: `${day}T22:30`,
+      title: 'Репетиция',
+    });
 
     const feed = (await w.call('GET', '/me/calendar-feed')).json();
     expect(feed.url).toMatch(/^https:\/\/example\.test\/cal\/[\w-]{43}\.ics$/);
-    expect(feed.webcalUrl).toBe(feed.url.replace('https://', 'webcal://'));
+    expect(feed.pageUrl).toBe(feed.url.replace(/\.ics$/, ''));
     // Повторный запрос — та же ссылка.
     expect((await w.call('GET', '/me/calendar-feed')).json().url).toBe(feed.url);
+
+    // Страница подключения — по той же ссылке без .ics.
+    const page = await ctx.app.inject({ method: 'GET', url: new URL(feed.pageUrl).pathname });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(page.body).toContain(`href="${feed.url.replace('https://', 'webcal://')}"`);
 
     const path = new URL(feed.url).pathname;
     const res = await ctx.app.inject({ method: 'GET', url: path });
@@ -234,6 +255,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Календарь и автопринят�
     expect(events.map((x) => x.summary)).toEqual([
       `🎤 Шоу ${o.telegramId} 19:00 — Зал Орг5 ${base}`,
       '🎤 Свой концерт',
+      'Занят: Репетиция',
     ]);
     expect(events[0]!.description).toContain('№1 в составе');
 
@@ -250,5 +272,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Календарь и автопринят�
     expect(rotated.url).not.toBe(feed.url);
     expect((await ctx.app.inject({ method: 'GET', url: path })).statusCode).toBe(404);
     expect((await ctx.app.inject({ method: 'GET', url: '/cal/nope.ics' })).statusCode).toBe(404);
+    const stalePage = new URL(feed.pageUrl).pathname;
+    expect((await ctx.app.inject({ method: 'GET', url: stalePage })).statusCode).toBe(404);
   });
 });

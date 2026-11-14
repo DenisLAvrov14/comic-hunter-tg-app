@@ -24,6 +24,20 @@ export function listVenuesByCity(db: Db, cityId: number): Promise<Venue[]> {
   return db.select().from(venues).where(eq(venues.cityId, cityId)).orderBy(asc(venues.name));
 }
 
+export async function findVenue(db: Db, id: string): Promise<Venue | undefined> {
+  const [row] = await db.select().from(venues).where(eq(venues.id, id));
+  return row;
+}
+
+export async function updateVenueImages(
+  db: Db,
+  id: string,
+  patch: Partial<Pick<Venue, 'logoS3Key' | 'photoS3Key' | 'photoPreviewS3Key'>>,
+): Promise<Venue> {
+  const [row] = await db.update(venues).set(patch).where(eq(venues.id, id)).returning();
+  return row!;
+}
+
 export async function createVenue(
   db: Db,
   input: { name: string; address: string; cityId: number; timezone: string; createdBy: string },

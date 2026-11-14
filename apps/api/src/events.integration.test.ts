@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq, inArray, schema, type Db } from '@standup/db';
+import { and, eq, inArray, schema, type Db } from '@standup/db';
 import { localToUtc } from '@standup/domain';
 import {
   TEST_DATABASE_URL,
@@ -122,12 +122,70 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     expect(res.statusCode).toBe(403);
   });
 
+  it('поездки: гость виден в чужом городе, уехавший не виден в своём', async () => {
+    const cities = (await org.call('GET', '/cities')).json() as Array<{ id: number; name: string }>;
+    const kazan = cities.find((x) => x.name === 'Казань')!.id;
+    const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    const [from, to, after] = [inDays(100), inDays(102), inDays(110)];
+    const ids = async (params: string) =>
+      ((await org.call('GET', `/comedians?${params}`)).json() as Array<{ id: string }>).map(
+        (x) => x.id,
+      );
+
+    const post = (u: TestClient, body: object) => u.call('POST', '/me/trips', body);
+    expect((await post(b, { cityId: kazan, startsOn: to, endsOn: from })).statusCode).toBe(400);
+    expect(
+      (await post(b, { cityId: kazan, startsOn: inDays(-5), endsOn: inDays(-3) })).statusCode,
+    ).toBe(400);
+    expect((await post(b, { cityId: kazan, startsOn: from, endsOn: inDays(200) })).statusCode).toBe(
+      400,
+    );
+    expect((await post(b, { cityId: kazan, startsOn: '2026-02-31', endsOn: to })).statusCode).toBe(
+      400,
+    );
+    expect((await post(b, { cityId: moscowId, startsOn: from, endsOn: to })).statusCode).toBe(400);
+    expect((await post(org, { cityId: kazan, startsOn: from, endsOn: to })).statusCode).toBe(403);
+    const created = await post(b, { cityId: kazan, startsOn: from, endsOn: to });
+    expect(created.statusCode).toBe(201);
+    const tripId = created.json().id as string;
+
+    // Казань: гость виден в свои даты и без даты, с пометкой поездки; местный москвич — нет.
+    const guestRow = (await org.call('GET', `/comedians?city=${kazan}&date=${from}`))
+      .json()
+      .find((x: { id: string }) => x.id === b.userId);
+    expect(guestRow.trip).toMatchObject({ cityId: kazan, startsOn: from, endsOn: to });
+    expect(await ids(`city=${kazan}`)).toContain(b.userId);
+    expect(await ids(`city=${kazan}`)).not.toContain(a.userId);
+    expect(await ids(`city=${kazan}&date=${after}`)).not.toContain(b.userId);
+
+    // Москва: в дни поездки комика нет, в другие есть.
+    expect(await ids(`city=${moscowId}&date=${from}`)).not.toContain(b.userId);
+    expect(await ids(`city=${moscowId}&date=${after}`)).toContain(b.userId);
+    expect(await ids(`city=${moscowId}`)).toContain(b.userId);
+
+    // Приглашение на событие в дни поездки учитывает дату события.
+    const e = await createEvent({ startsAtLocal: `${from}T20:00` });
+    expect(await ids(`city=${moscowId}&freeAtEvent=${e.id}`)).not.toContain(b.userId);
+    expect(await ids(`city=${kazan}&freeAtEvent=${e.id}`)).toContain(b.userId);
+
+    expect((await b.call('GET', '/me/trips')).json().map((x: { id: string }) => x.id)).toEqual([
+      tripId,
+    ]);
+    expect((await a.call('DELETE', `/me/trips/${tripId}`)).statusCode).toBe(404);
+    expect((await b.call('DELETE', `/me/trips/${tripId}`)).statusCode).toBe(204);
+    expect(await ids(`city=${kazan}`)).not.toContain(b.userId);
+  });
+
   it('три способа набора, входящие, состав и пересечения', async () => {
     const e1 = await createEvent();
 
     // 1. Открытый набор: событие в «Ищут комиков», заявка.
     const open = (await a.call('GET', `/events?city=${moscowId}`)).json() as Array<{ id: string }>;
     expect(open.map((x) => x.id)).toContain(e1.id);
+    // Шире города — все города. Фильтров «вся страна» больше нет (правки 10 ноября).
+    const openIds = async (params: string) =>
+      ((await a.call('GET', `/events${params}`)).json() as Array<{ id: string }>).map((x) => x.id);
+    expect(await openIds('')).toContain(e1.id);
     const app1 = await a.call('POST', `/events/${e1.id}/applications`, { message: 'Хочу!' });
     expect(app1.statusCode).toBe(201);
     expect(app1.json()).toMatchObject({ status: 'pending', source: 'application' });
@@ -136,14 +194,16 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     const inboxA = (await a.call('GET', '/me/inbox')).json();
     expect(inboxA.applications.map((i: { event: { id: string } }) => i.event.id)).toContain(e1.id);
 
-    // 2. По ссылке: закрытый набор виден только по токену.
+    // 2. По ссылке: закрытый набор виден всем (он есть на «Карте»), записаться — только по токену.
     const closed = await createEvent({ recruitmentOpen: false, title: `Закрытый ${base}` });
-    expect((await outsider.call('GET', `/events/${closed.id}`)).statusCode).toBe(404);
+    const closedView = await outsider.call('GET', `/events/${closed.id}`);
+    expect(closedView.statusCode).toBe(200);
+    expect(closedView.json().viewer.canApply).toBe(false);
     const byLink = await outsider.call('GET', `/events/by-link/${closed.linkToken}`);
     expect(byLink.statusCode).toBe(200);
     expect(byLink.json().viewer.canApply).toBe(true);
     expect((await outsider.call('POST', `/events/${closed.id}/applications`, {})).statusCode).toBe(
-      404,
+      409,
     );
     const viaLink = await outsider.call('POST', `/events/${closed.id}/applications`, {
       token: closed.linkToken,
@@ -171,6 +231,12 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     // Комик принимает приглашение → позиция 1.
     const accB = await act(b, invB.participation.id, 'accept');
     expect(accB.json()).toMatchObject({ status: 'accepted', position: 1 });
+    // Принятое приглашение остаётся у комика во «Входящих» — уже как выступление.
+    const afterAccept = (await b.call('GET', '/me/inbox')).json();
+    expect(
+      afterAccept.applications.find((i: { event: { id: string } }) => i.event.id === e1.id)
+        ?.participation,
+    ).toMatchObject({ status: 'accepted', dayConfirmation: 'none' });
 
     // Организатор принимает заявку → позиция 2.
     let l = await lineup(e1.id);
@@ -314,5 +380,43 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     expect(cancelled.status).toBe('cancelled');
     expect((await a.call('POST', `/events/${e.id}/applications`, {})).statusCode).toBe(409);
     expect((await a.call('POST', `/events/${e.id}/cancel`)).statusCode).toBe(403);
+  });
+
+  it('организатор зовёт себя: приглашение приходит, отвечает как комик, управляет как организатор', async () => {
+    await org.call('PUT', '/me/roles', { roles: ['organizer', 'comedian'] });
+    await org.call('PUT', '/me/comedian-profile', {
+      stageName: `Орг-комик ${base}`,
+      cityId: moscowId,
+      contact: '@org',
+    });
+    try {
+      const e = await createEvent({ startsAtLocal: `${day}T12:00` });
+      const inv = (
+        await org.call('POST', `/events/${e.id}/invitations`, { comedianIds: [org.userId] })
+      ).json();
+      expect(inv.invited).toEqual([org.userId]);
+      const [notice] = await db
+        .select()
+        .from(schema.scheduledNotifications)
+        .where(
+          and(
+            eq(schema.scheduledNotifications.userId, org.userId),
+            eq(schema.scheduledNotifications.kind, 'invitation_received'),
+          ),
+        );
+      expect(notice).toBeDefined();
+
+      const inbox = (await org.call('GET', '/me/inbox')).json();
+      const mine = inbox.invitations.find((i: { event: { id: string } }) => i.event.id === e.id);
+      expect((await act(org, mine.participation.id, 'accept')).json()).toMatchObject({
+        status: 'accepted',
+      });
+      // Себя же — в резерв, как организатор.
+      expect((await act(org, mine.participation.id, 'reserve')).json()).toMatchObject({
+        status: 'reserve',
+      });
+    } finally {
+      await org.call('PUT', '/me/roles', { roles: ['organizer'] });
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inArray, schema } from '@standup/db';
+import { and, eq, inArray, schema } from '@standup/db';
 import {
   TEST_DATABASE_URL,
   login,
@@ -113,7 +113,20 @@ describe.skipIf(!TEST_DATABASE_URL)('API состав (Postgres)', () => {
     const assigned = await org.call('PUT', `/events/${eventId}/staff/${host.userId}`, {
       permissions: { ...allPerms, can_reorder: false },
     });
-    expect(assigned.json().staff).toMatchObject([{ userId: host.userId, name: 'Ведущий' }]);
+    expect(assigned.json().staff).toMatchObject([
+      { userId: host.userId, name: 'Ведущий', status: 'invited' },
+    ]);
+    // Ведущему уходит приглашение в бот.
+    const invites = await ctx.db
+      .select()
+      .from(schema.scheduledNotifications)
+      .where(
+        and(
+          eq(schema.scheduledNotifications.userId, host.userId),
+          eq(schema.scheduledNotifications.kind, 'host_invitation'),
+        ),
+      );
+    expect(invites).toHaveLength(1);
     const res = await host.call('PATCH', `/events/${eventId}/lineup/order`, {
       order,
       version: l.version,
@@ -124,9 +137,19 @@ describe.skipIf(!TEST_DATABASE_URL)('API состав (Postgres)', () => {
     expect((await host.call('GET', `/events/${eventId}/lineup`)).statusCode).toBe(200);
     const details = (await host.call('GET', `/events/${eventId}`)).json();
     expect(details.viewer.staffPermissions).toMatchObject({ can_reorder: false });
-    expect((await host.call('GET', '/me/hosting')).json().map((e: { id: string }) => e.id)).toEqual(
-      [eventId],
-    );
+    expect(details.viewer.hostStatus).toBe('invited');
+    const hosting = () => host.call('GET', '/me/hosting');
+    expect((await hosting()).json()).toMatchObject([{ event: { id: eventId }, status: 'invited' }]);
+
+    // Ведущий принимает приглашение; в афише он появится только после этого.
+    const answer = await host.call('POST', `/events/${eventId}/hosting`, { value: 'accepted' });
+    expect(answer.json()).toEqual({ status: 'accepted' });
+    expect((await hosting()).json()).toMatchObject([{ status: 'accepted' }]);
+    // Чужое событие ответить нельзя.
+    expect(
+      (await comics[0]!.call('POST', `/events/${eventId}/hosting`, { value: 'accepted' }))
+        .statusCode,
+    ).toBe(404);
   });
 
   it('организатор и ведущий меняют порядок одновременно → второй получает конфликт версии', async () => {

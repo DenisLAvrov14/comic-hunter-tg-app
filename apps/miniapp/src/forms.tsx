@@ -1,12 +1,15 @@
 import {
   comedianCategories,
-  linkTypes,
+  socialLinkTypes,
+  socialUrl,
   ru,
   type ComedianCategory,
   type ComedianProfileInput,
   type LinkType,
   type Me,
   type OrganizerProfileInput,
+  type ProfileLink,
+  type SocialLinkType,
   type UserRole,
 } from '@standup/shared';
 import { CitySelect, TextField } from './ui';
@@ -19,10 +22,32 @@ export interface ComedianDraft {
   contact: string;
   category: ComedianCategory;
   bio: string;
+  /** Соцсети — отдельными полями: ссылка или ник. */
+  socials: Record<SocialLinkType, string>;
+  /** Видео выступлений и прочие ссылки — списком. */
   links: Array<{ type: LinkType; url: string }>;
-  travelBufferMinutes: string;
-  defaultSetMinutes: string;
+  /** Повторные ссылки на ту же соцсеть из старых профилей — сохраняются как есть. */
+  extraSocials: ProfileLink[];
   isSearchable: boolean;
+}
+
+const isSocial = (type: LinkType): type is SocialLinkType =>
+  (socialLinkTypes as readonly LinkType[]).includes(type);
+
+/** Первая ссылка каждой соцсети — в её поле, остальное — в список. */
+function splitLinks(links: ProfileLink[]) {
+  const socials = Object.fromEntries(socialLinkTypes.map((s) => [s, ''])) as Record<
+    SocialLinkType,
+    string
+  >;
+  const extraSocials: ProfileLink[] = [];
+  const rest: ProfileLink[] = [];
+  for (const link of links) {
+    if (!isSocial(link.type)) rest.push(link);
+    else if (socials[link.type]) extraSocials.push(link);
+    else socials[link.type] = link.url;
+  }
+  return { socials, links: rest, extraSocials };
 }
 
 /** Город по умолчанию — из другого профиля пользователя, если он уже есть. */
@@ -38,18 +63,19 @@ export function comedianDraft(me: Me): ComedianDraft {
     contact: p?.contact ?? (me.telegramUsername ? `@${me.telegramUsername}` : ''),
     category: p?.category ?? 'newbie',
     bio: p?.bio ?? '',
-    links: p?.links ?? [],
-    travelBufferMinutes: String(p?.travelBufferMinutes ?? 30),
-    defaultSetMinutes: p?.defaultSetMinutes ? String(p.defaultSetMinutes) : '',
+    ...splitLinks(p?.links ?? []),
     isSearchable: p?.isSearchable ?? true,
   };
 }
 
-export function comedianReady(d: ComedianDraft): boolean {
-  return d.stageName.trim() !== '' && d.cityId !== null && d.contact.trim() !== '';
+/** Обязательные поля для подсветки: подпись поля и заполнено ли оно. */
+export function comedianRequired(d: ComedianDraft): Array<[string, boolean]> {
+  return [
+    [t.fields.stageName, d.stageName.trim() !== ''],
+    [t.fields.city, d.cityId !== null],
+    [t.fields.contact, d.contact.trim() !== ''],
+  ];
 }
-
-const toInt = (s: string) => (s.trim() === '' ? null : Number.parseInt(s, 10));
 
 /** Минимальный вариант (онбординг) отправляет только обязательные поля — остальные сервер не трогает. */
 export function comedianInput(d: ComedianDraft, full: boolean): ComedianProfileInput {
@@ -59,9 +85,14 @@ export function comedianInput(d: ComedianDraft, full: boolean): ComedianProfileI
     ...base,
     category: d.category,
     bio: d.bio.trim() || null,
-    links: d.links.filter((l) => l.url.trim() !== '').map((l) => ({ ...l, url: l.url.trim() })),
-    travelBufferMinutes: toInt(d.travelBufferMinutes) ?? 30,
-    defaultSetMinutes: toInt(d.defaultSetMinutes),
+    links: [
+      ...socialLinkTypes.flatMap((type) => {
+        const url = socialUrl(type, d.socials[type]);
+        return url ? [{ type, url }] : [];
+      }),
+      ...d.extraSocials,
+      ...d.links.filter((l) => l.url.trim() !== '').map((l) => ({ ...l, url: l.url.trim() })),
+    ],
     isSearchable: d.isSearchable,
   };
 }
@@ -70,10 +101,13 @@ export function ComedianFields({
   draft,
   onChange,
   full,
+  missing = [],
 }: {
   draft: ComedianDraft;
   onChange: (d: ComedianDraft) => void;
   full: boolean;
+  /** Незаполненные обязательные поля — подсвечиваются. */
+  missing?: string[];
 }) {
   const set = <K extends keyof ComedianDraft>(key: K, value: ComedianDraft[K]) =>
     onChange({ ...draft, [key]: value });
@@ -83,12 +117,18 @@ export function ComedianFields({
       <TextField
         label={t.fields.stageName}
         value={draft.stageName}
+        invalid={missing.includes(t.fields.stageName)}
         onChange={(v) => set('stageName', v)}
       />
-      <CitySelect value={draft.cityId} onChange={(v) => set('cityId', v)} />
+      <CitySelect
+        value={draft.cityId}
+        invalid={missing.includes(t.fields.city)}
+        onChange={(v) => set('cityId', v)}
+      />
       <TextField
         label={t.fields.contact}
         value={draft.contact}
+        invalid={missing.includes(t.fields.contact)}
         hint={t.fields.contactHint}
         onChange={(v) => set('contact', v)}
       />
@@ -114,20 +154,11 @@ export function ComedianFields({
             value={draft.bio}
             onChange={(v) => set('bio', v)}
           />
+          <SocialFields
+            value={draft.socials}
+            onChange={(type, v) => set('socials', { ...draft.socials, [type]: v })}
+          />
           <LinksEditor links={draft.links} onChange={(v) => set('links', v)} />
-          <TextField
-            label={t.fields.travelBuffer}
-            inputMode="numeric"
-            value={draft.travelBufferMinutes}
-            onChange={(v) => set('travelBufferMinutes', v.replace(/\D/g, ''))}
-          />
-          <TextField
-            label={t.fields.defaultSet}
-            optional
-            inputMode="numeric"
-            value={draft.defaultSetMinutes}
-            onChange={(v) => set('defaultSetMinutes', v.replace(/\D/g, ''))}
-          />
           <label className="checkbox">
             <input
               type="checkbox"
@@ -142,6 +173,39 @@ export function ComedianFields({
   );
 }
 
+function SocialFields({
+  value,
+  onChange,
+}: {
+  value: Record<SocialLinkType, string>;
+  onChange: (type: SocialLinkType, v: string) => void;
+}) {
+  return (
+    <div className="field-group">
+      <span className="field-label">
+        {t.fields.socials} <span className="optional">· {t.fields.socialsHint}</span>
+      </span>
+      {socialLinkTypes.map((type) => (
+        <label key={type} className="social-field">
+          <span className="social-name">{t.linkTypes[type]}</span>
+          <input
+            className="grow"
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder={t.fields.socialPlaceholders[type]}
+            value={value[type]}
+            onChange={(e) => onChange(type, e.target.value)}
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** Видео и прочие ссылки: соцсети вынесены в отдельные поля. */
+const listLinkTypes = ['video', 'other'] as const satisfies readonly LinkType[];
+
 function LinksEditor({
   links,
   onChange,
@@ -155,7 +219,7 @@ function LinksEditor({
   return (
     <div className="field-group">
       <span className="field-label">
-        {t.fields.links} <span className="optional">· {t.fields.linksHint}</span>
+        {t.fields.videos} <span className="optional">· {t.fields.videosHint}</span>
       </span>
       {links.map((link, i) => (
         <div className="row" key={i}>
@@ -163,7 +227,7 @@ function LinksEditor({
             value={link.type}
             onChange={(e) => update(i, { type: e.target.value as LinkType })}
           >
-            {linkTypes.map((lt) => (
+            {listLinkTypes.map((lt) => (
               <option key={lt} value={lt}>
                 {t.linkTypes[lt]}
               </option>
@@ -214,8 +278,11 @@ export function organizerDraft(me: Me): OrganizerDraft {
   };
 }
 
-export function organizerReady(d: OrganizerDraft): boolean {
-  return d.displayName.trim() !== '' && d.cityId !== null;
+export function organizerRequired(d: OrganizerDraft): Array<[string, boolean]> {
+  return [
+    [t.fields.displayName, d.displayName.trim() !== ''],
+    [t.fields.city, d.cityId !== null],
+  ];
 }
 
 export function organizerInput(d: OrganizerDraft, full: boolean): OrganizerProfileInput {
@@ -228,10 +295,12 @@ export function OrganizerFields({
   draft,
   onChange,
   full,
+  missing = [],
 }: {
   draft: OrganizerDraft;
   onChange: (d: OrganizerDraft) => void;
   full: boolean;
+  missing?: string[];
 }) {
   const set = <K extends keyof OrganizerDraft>(key: K, value: OrganizerDraft[K]) =>
     onChange({ ...draft, [key]: value });
@@ -240,9 +309,14 @@ export function OrganizerFields({
       <TextField
         label={t.fields.displayName}
         value={draft.displayName}
+        invalid={missing.includes(t.fields.displayName)}
         onChange={(v) => set('displayName', v)}
       />
-      <CitySelect value={draft.cityId} onChange={(v) => set('cityId', v)} />
+      <CitySelect
+        value={draft.cityId}
+        invalid={missing.includes(t.fields.city)}
+        onChange={(v) => set('cityId', v)}
+      />
       {full && (
         <>
           <TextField

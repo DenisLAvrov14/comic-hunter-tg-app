@@ -17,8 +17,9 @@ export interface IcsGig {
   updatedAt: Date;
 }
 
-export interface IcsManualGig {
+export interface IcsBusySlot {
   id: string;
+  kind: 'busy' | 'manual_gig';
   title: string | null;
   venueText: string | null;
   startsAt: Date;
@@ -42,7 +43,7 @@ function hhmm(at: Date, tz: string) {
  * ICS-лента комика (SPEC §10). DTSTART — начало события, чтобы в календаре был виден весь вечер;
  * примерное время выхода — в описании. Время в UTC: VTIMEZONE не нужен, клиенты покажут в своей зоне.
  */
-export function buildIcs(p: { timezone: string; gigs: IcsGig[]; manual: IcsManualGig[] }): string {
+export function buildIcs(p: { timezone: string; gigs: IcsGig[]; busy: IcsBusySlot[] }): string {
   const t = ru.ics;
   const cal = ical({
     name: t.calendarName,
@@ -72,16 +73,56 @@ export function buildIcs(p: { timezone: string; gigs: IcsGig[]; manual: IcsManua
       status: g.cancelled ? ICalEventStatus.CANCELLED : ICalEventStatus.CONFIRMED,
     });
   }
-  for (const m of p.manual) {
+  for (const b of p.busy) {
     cal.createEvent({
-      id: `busy-${m.id}@standupcalendar`,
-      sequence: sequence(m.createdAt),
-      start: m.startsAt,
-      end: m.endsAt,
-      summary: t.manual(m.title ?? t.manualDefault),
-      location: m.venueText ?? undefined,
+      id: `busy-${b.id}@standupcalendar`,
+      sequence: sequence(b.createdAt),
+      start: b.startsAt,
+      end: b.endsAt,
+      summary: b.kind === 'busy' ? t.busy(b.title) : t.manual(b.title ?? t.manualDefault),
+      location: b.venueText ?? undefined,
       status: ICalEventStatus.CONFIRMED,
     });
   }
   return cal.toString();
+}
+
+/**
+ * Страница подключения календаря. Telegram открывает только http(s), поэтому Mini App ведёт сюда,
+ * а уже отсюда браузер передаёт webcal:// системному календарю.
+ */
+export function buildFeedPage(url: string): string {
+  const t = ru.ics.page;
+  const webcal = url.replace(/^https?:\/\//, 'webcal://');
+  const google = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`;
+  return `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${t.title}</title>
+<style>
+:root { color-scheme: light dark; }
+body { margin: 0; padding: 32px 16px; font: 16px/1.45 -apple-system, system-ui, sans-serif; }
+main { max-width: 420px; margin: 0 auto; display: grid; gap: 12px; }
+h1 { margin: 0; font-size: 24px; }
+p { margin: 0; opacity: .7; font-size: 14px; }
+a.button { display: block; padding: 14px; border-radius: 12px; background: #2481cc; color: #fff; text-align: center; text-decoration: none; font-weight: 600; }
+code { overflow-wrap: anywhere; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+<h1>${t.title}</h1>
+<p>${t.hint}</p>
+<a class="button" href="${webcal}">${t.apple}</a>
+<a class="button" href="${google}">${t.google}</a>
+<p>${t.googleHint}</p>
+<p>${t.manual}</p>
+<code>${url}</code>
+</main>
+</body>
+</html>
+`;
 }

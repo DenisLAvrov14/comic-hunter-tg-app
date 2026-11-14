@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { eventFormats, ru, type AutoAcceptRule, type AutoAcceptRuleInput } from '@standup/shared';
+import {
+  ru,
+  selectableEventFormats,
+  type AutoAcceptRule,
+  type AutoAcceptRuleInput,
+} from '@standup/shared';
 import { api } from '../api';
 import { useMe } from '../auth';
 import { askWriteAccess, haptic, openExternal } from '../telegram';
@@ -40,7 +45,7 @@ export function SettingsScreen() {
   }
 
   return (
-    <Screen title={s.title} back={<BackButton to="/" />}>
+    <Screen title={s.title} back={<BackButton to="/more" />}>
       {!me.botStarted && (
         <section className="card">
           <p className="hint">{s.botOff}</p>
@@ -206,7 +211,7 @@ function RuleEditor({
         <>
           <span className="field-label">{r.formats}</span>
           <div className="row wrap">
-            {eventFormats.map((f) => (
+            {selectableEventFormats.map((f) => (
               <button
                 key={f}
                 className={d.formats.includes(f) ? 'chip active' : 'chip'}
@@ -228,7 +233,7 @@ function RuleEditor({
               </button>
             ))}
           </div>
-          <div className="row">
+          <div className="fields">
             <label>
               {r.timeFrom}
               <input
@@ -253,7 +258,7 @@ function RuleEditor({
             value={d.maxGigsPerDay}
             onChange={(v) => setD({ ...d, maxGigsPerDay: v.replace(/\D/g, '') })}
           />
-          <div className="row wrap">
+          <div className="action-bar">
             <button disabled={saving} onClick={() => onSave(body(rule.enabled))}>
               {r.save}
             </button>
@@ -267,7 +272,7 @@ function RuleEditor({
   );
 }
 
-/** ICS-подписка: webcal для iPhone, https-ссылка для Google (SPEC §10). */
+/** ICS-подписка: страница подключения в браузере и ссылка для ручной подписки (SPEC §10). */
 function FeedSection() {
   const queryClient = useQueryClient();
   const feed = useQuery({ queryKey: ['calendarFeed'], queryFn: api.calendarFeed });
@@ -288,10 +293,10 @@ function FeedSection() {
       {data && (
         <>
           <code className="link">{data.url}</code>
-          <div className="row wrap">
-            <button onClick={() => openExternal(data.webcalUrl)}>{f.subscribe}</button>
+          <div className="action-bar">
+            <button onClick={() => openExternal(data.pageUrl)}>{f.subscribe}</button>
             <button
-              className="secondary"
+              className="outline"
               onClick={() =>
                 void navigator.clipboard?.writeText(data.url).then(() => {
                   setCopied(true);

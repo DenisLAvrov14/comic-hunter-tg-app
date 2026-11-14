@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  date,
   doublePrecision,
   index,
   integer,
@@ -23,7 +24,24 @@ const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull(
 const updatedAt = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
 
 export const userRoleEnum = pgEnum('user_role', ['comedian', 'organizer', 'host']);
-export const countryEnum = pgEnum('country', ['RU', 'KZ']);
+// Дублирует countries из @standup/shared. Группировка по регионам — там же (regionOf).
+export const countryEnum = pgEnum('country', [
+  'RU',
+  'KZ',
+  'UZ',
+  'KG',
+  'TJ',
+  'BY',
+  'GE',
+  'AM',
+  'RS',
+  'PL',
+  'ES',
+  'TR',
+  'DE',
+  'CZ',
+  'NL',
+]);
 export const comedianCategoryEnum = pgEnum('comedian_category', ['newbie', 'experienced', 'media']);
 
 export const users = pgTable('users', {
@@ -143,13 +161,25 @@ export const venues = pgTable(
     timezone: text('timezone').notNull(),
     lat: doublePrecision('lat'),
     lng: doublePrecision('lng'),
+    // Лого (квадрат) и фото площадки; превью фото — для списка.
+    logoS3Key: text('logo_s3_key'),
+    photoS3Key: text('photo_s3_key'),
+    photoPreviewS3Key: text('photo_preview_s3_key'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
   (t) => [index('venues_city_idx').on(t.cityId)],
 );
 
-export const eventFormatEnum = pgEnum('event_format', ['open_mic', 'showcase', 'concert', 'other']);
+// tryout — «Проверка», paid — «Платка», concert показывается как «Шоу».
+export const eventFormatEnum = pgEnum('event_format', [
+  'open_mic',
+  'showcase',
+  'concert',
+  'other',
+  'tryout',
+  'paid',
+]);
 export const eventStatusEnum = pgEnum('event_status', [
   'draft',
   'recruiting',
@@ -176,6 +206,8 @@ export const participationStatusEnum = pgEnum('participation_status', [
 export const dayConfirmationEnum = pgEnum('day_confirmation', ['none', 'confirmed', 'declined']);
 export const attendanceEnum = pgEnum('attendance', ['unknown', 'present', 'absent']);
 export const staffRoleEnum = pgEnum('staff_role', ['host']);
+/** Ведущего зовут, а не назначают: он принимает или отказывается. */
+export const staffStatusEnum = pgEnum('staff_status', ['invited', 'accepted', 'declined']);
 export const busyKindEnum = pgEnum('busy_kind', ['busy', 'manual_gig']);
 export const notificationKindEnum = pgEnum('notification_kind', [
   'invitation_received',
@@ -197,6 +229,7 @@ export const notificationKindEnum = pgEnum('notification_kind', [
   'counter_proposal_received',
   'new_application',
   'broadcast',
+  'host_invitation',
 ]);
 export const notificationStatusEnum = pgEnum('notification_status', [
   'pending',
@@ -307,6 +340,7 @@ export const eventStaff = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: staffRoleEnum('role').notNull().default('host'),
+    status: staffStatusEnum('status').notNull().default('invited'),
     permissions: jsonb('permissions').$type<Record<string, boolean>>().notNull().default({}),
     createdAt: createdAt(),
   },
@@ -332,6 +366,28 @@ export const busySlots = pgTable(
     index('busy_slots_window_gist').using('gist', sql`tstzrange(${t.startsAt}, ${t.endsAt})`),
   ],
 );
+
+/** Поездка комика: в эти дни он в другом городе и его видят организаторы этого города. */
+export const comedianTrips = pgTable(
+  'comedian_trips',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    comedianId: uuid('comedian_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    cityId: integer('city_id')
+      .notNull()
+      .references(() => cities.id),
+    startsOn: date('starts_on').notNull(),
+    endsOn: date('ends_on').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('comedian_trips_comedian_idx').on(t.comedianId, t.endsOn),
+    index('comedian_trips_city_idx').on(t.cityId, t.endsOn),
+  ],
+);
+export type ComedianTrip = typeof comedianTrips.$inferSelect;
 
 export const autoAcceptRules = pgTable(
   'auto_accept_rules',

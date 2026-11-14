@@ -2,20 +2,33 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  COMEDIAN_SEARCH_LIMIT,
   comedianCategories,
-  eventFormats,
   ru,
+  selectableEventFormats,
   type ComedianCategory,
+  type ComedianSearchItem,
   type EventDetails,
   type EventFormat,
   type EventInput,
 } from '@standup/shared';
 import { api } from '../api';
 import { useMe } from '../auth';
+import { ComedianCardView } from '../comedian-card';
 import { EventCard } from '../events-ui';
-import { toLocalParts, todayLocal } from '../format';
+import { formatDayRange, toLocalParts, todayLocal } from '../format';
 import { haptic } from '../telegram';
-import { BackButton, ErrorText, MainButton, Screen, TextField } from '../ui';
+import {
+  BackButton,
+  CitySelect,
+  ErrorText,
+  MainButton,
+  MissingText,
+  Screen,
+  TextField,
+  useCities,
+  useRequired,
+} from '../ui';
 
 const t = ru.app;
 
@@ -26,7 +39,7 @@ export function MyEventsScreen() {
     queryFn: () => api.myEvents(when),
   });
   return (
-    <Screen title={t.myEvents.title} back={<BackButton to="/" />}>
+    <Screen title={t.myEvents.title}>
       <div className="tabs">
         {(['upcoming', 'past'] as const).map((w) => (
           <button key={w} className={when === w ? 'tab active' : 'tab'} onClick={() => setWhen(w)}>
@@ -43,7 +56,12 @@ export function MyEventsScreen() {
       ) : (
         <div className="list">
           {data.map((e) => (
-            <EventCard key={e.id} e={e} to={`/events/${e.id}/manage`} />
+            <EventCard
+              key={e.id}
+              e={e}
+              to={`/events/${e.id}/manage`}
+              badge={when === 'upcoming' ? e.awaitingCount : 0}
+            />
           ))}
         </div>
       )}
@@ -61,6 +79,7 @@ interface EventDraft {
   formatNote: string;
   date: string;
   startTime: string;
+  /** Конец и паузу в форме не спрашиваем; у старых событий значения сохраняются. */
   endTime: string;
   slotsCount: string;
   setMinutes: string;
@@ -82,7 +101,7 @@ function draftFrom(e?: EventDetails): EventDraft {
       endTime: '',
       slotsCount: '8',
       setMinutes: '7',
-      gapMinutes: '2',
+      gapMinutes: '0',
       conditions: '',
       recruitmentOpen: true,
       showLineup: true,
@@ -151,7 +170,7 @@ function EventForm({ event }: { event?: EventDetails }) {
   const queryClient = useQueryClient();
   const [d, setD] = useState(() => draftFrom(event));
   const set = <K extends keyof EventDraft>(k: K, v: EventDraft[K]) => setD({ ...d, [k]: v });
-  const cityId = me.organizerProfile?.cityId ?? null;
+  const [cityId, setCityId] = useState(event?.venue.cityId ?? me.organizerProfile?.cityId ?? null);
   const venues = useQuery({
     queryKey: ['venues', cityId],
     queryFn: () => api.venues(cityId!),
@@ -171,21 +190,39 @@ function EventForm({ event }: { event?: EventDetails }) {
     onError: () => haptic('error'),
   });
 
-  const ready =
-    d.venueId !== '' &&
-    d.title.trim() !== '' &&
-    d.date !== '' &&
-    d.startTime !== '' &&
-    Number(d.slotsCount) > 0 &&
-    Number(d.setMinutes) > 0;
-  const num = (k: 'slotsCount' | 'setMinutes' | 'gapMinutes') => (v: string) =>
-    set(k, v.replace(/\D/g, ''));
+  const f = t.eventForm;
+  const required = useRequired([
+    [f.title, d.title.trim() !== ''],
+    [t.fields.city, cityId !== null],
+    [f.venue, d.venueId !== ''],
+    [f.date, d.date !== ''],
+    [f.startTime, d.startTime !== ''],
+    [f.slots, Number(d.slotsCount) > 0],
+    [f.setMinutes, Number(d.setMinutes) > 0],
+  ]);
+  const submit = (status: 'draft' | 'recruiting' | undefined) => {
+    if (required.check()) save.mutate(status);
+  };
+  const num = (k: 'slotsCount' | 'setMinutes') => (v: string) => set(k, v.replace(/\D/g, ''));
 
   return (
     <Screen title={event ? t.eventForm.editTitle : t.eventForm.createTitle} back={<BackButton />}>
       <section className="card">
-        <TextField label={t.eventForm.title} value={d.title} onChange={(v) => set('title', v)} />
-        <label>
+        <TextField
+          label={t.eventForm.title}
+          value={d.title}
+          invalid={required.isMissing(f.title)}
+          onChange={(v) => set('title', v)}
+        />
+        <CitySelect
+          value={cityId}
+          invalid={required.isMissing(t.fields.city)}
+          onChange={(id) => {
+            setCityId(id);
+            set('venueId', '');
+          }}
+        />
+        <label className={required.isMissing(f.venue) ? 'invalid' : undefined}>
           {t.eventForm.venue}
           <select value={d.venueId} onChange={(e) => set('venueId', e.target.value)}>
             <option value="" disabled>
@@ -203,33 +240,31 @@ function EventForm({ event }: { event?: EventDetails }) {
             </span>
           )}
         </label>
-        <div className="row">
-          <label className="grow">
-            {t.eventForm.format}
-            <select value={d.format} onChange={(e) => set('format', e.target.value as EventFormat)}>
-              {eventFormats.map((f) => (
-                <option key={f} value={f}>
-                  {t.formats[f]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <TextField
-            label={t.eventForm.formatNote}
-            optional
-            value={d.formatNote}
-            onChange={(v) => set('formatNote', v)}
-          />
-        </div>
+        <label>
+          {t.eventForm.format}
+          <select value={d.format} onChange={(e) => set('format', e.target.value as EventFormat)}>
+            {selectableEventFormats.map((f) => (
+              <option key={f} value={f}>
+                {t.formatOptions[f]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextField
+          label={t.eventForm.formatNote}
+          optional
+          value={d.formatNote}
+          onChange={(v) => set('formatNote', v)}
+        />
       </section>
 
       <section className="card">
-        <label>
-          {t.eventForm.date}
-          <input type="date" value={d.date} onChange={(e) => set('date', e.target.value)} />
-        </label>
-        <div className="row">
-          <label className="grow">
+        <div className="fields">
+          <label className={required.isMissing(f.date) ? 'invalid' : undefined}>
+            {t.eventForm.date}
+            <input type="date" value={d.date} onChange={(e) => set('date', e.target.value)} />
+          </label>
+          <label className={required.isMissing(f.startTime) ? 'invalid' : undefined}>
             {t.eventForm.startTime}
             <input
               type="time"
@@ -237,32 +272,22 @@ function EventForm({ event }: { event?: EventDetails }) {
               onChange={(e) => set('startTime', e.target.value)}
             />
           </label>
-          <label className="grow">
-            <span>
-              {t.eventForm.endTime} <span className="optional">· {t.optional}</span>
-            </span>
-            <input type="time" value={d.endTime} onChange={(e) => set('endTime', e.target.value)} />
-          </label>
         </div>
         {venue && <span className="field-hint">{t.eventForm.timezoneHint(venue.timezone)}</span>}
-        <div className="row">
+        <div className="fields">
           <TextField
             label={t.eventForm.slots}
             inputMode="numeric"
             value={d.slotsCount}
+            invalid={required.isMissing(f.slots)}
             onChange={num('slotsCount')}
           />
           <TextField
             label={t.eventForm.setMinutes}
             inputMode="numeric"
             value={d.setMinutes}
+            invalid={required.isMissing(f.setMinutes)}
             onChange={num('setMinutes')}
-          />
-          <TextField
-            label={t.eventForm.gapMinutes}
-            inputMode="numeric"
-            value={d.gapMinutes}
-            onChange={num('gapMinutes')}
           />
         </div>
       </section>
@@ -294,42 +319,142 @@ function EventForm({ event }: { event?: EventDetails }) {
         </label>
       </section>
 
+      <MissingText missing={required.missing} />
       <ErrorText error={save.error} />
       {!event && (
-        <button
-          className="secondary"
-          disabled={!ready || save.isPending}
-          onClick={() => save.mutate('draft')}
-        >
+        <button className="secondary" disabled={save.isPending} onClick={() => submit('draft')}>
           {t.eventForm.saveDraft}
         </button>
       )}
       <MainButton
         text={event ? t.eventForm.save : t.eventForm.publish}
-        disabled={!ready}
         loading={save.isPending}
-        onClick={() => save.mutate(event ? undefined : 'recruiting')}
+        onClick={() => submit(event ? undefined : 'recruiting')}
       />
+    </Screen>
+  );
+}
+
+/** Город проживания комика и поездка, если она относится к поиску. */
+function ComedianSummary({ c }: { c: ComedianSearchItem }) {
+  const { data: cities = [] } = useCities();
+  const cityName = (id: number) => cities.find((x) => x.id === id)?.name ?? '';
+  return (
+    <span className="grow stack-tight">
+      <strong>{c.stageName}</strong>
+      <span className="hint">
+        {t.categories[c.category]} · {cityName(c.cityId)}
+      </span>
+      {c.trip && (
+        <span className="trip-note">
+          {t.trips.note(cityName(c.trip.cityId), formatDayRange(c.trip.startsOn, c.trip.endsOn))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Вкладка организатора: все комики с фильтром; пригласить можно с экрана события. */
+export function ComediansScreen() {
+  const { me } = useMe();
+  const [q, setQ] = useState('');
+  const [category, setCategory] = useState<ComedianCategory | ''>('');
+  const [date, setDate] = useState('');
+  const [opened, setOpened] = useState<string | null>(null);
+  const [city, setCity] = useState<number | null>(me.organizerProfile?.cityId ?? null);
+  const { data, error, isPending } = useQuery({
+    queryKey: ['comedians', 'browse', q, category, city, date],
+    queryFn: () =>
+      api.comedians({
+        q: q.trim() || undefined,
+        category: category || undefined,
+        city: city ?? undefined,
+        date: date || undefined,
+      }),
+  });
+
+  return (
+    <Screen title={t.comedians.title}>
+      <TextField label={t.invite.search} value={q} onChange={setQ} />
+      <CitySelect
+        value={city}
+        onChange={setCity}
+        anyLabel={t.invite.anyCity}
+        onAny={() => setCity(null)}
+      />
+      <div className="fields">
+        <label>
+          {t.comedians.category}
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as ComedianCategory | '')}
+          >
+            <option value="">{t.invite.anyCategory}</option>
+            {comedianCategories.map((c) => (
+              <option key={c} value={c}>
+                {t.categories[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t.comedians.date}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+      </div>
+      <p className="hint">{t.comedians.hint}</p>
+      <ErrorText error={error} />
+      {data?.length === COMEDIAN_SEARCH_LIMIT && (
+        <p className="hint">{t.comedians.limited(COMEDIAN_SEARCH_LIMIT)}</p>
+      )}
+      {isPending ? (
+        <p className="hint">{t.loading}</p>
+      ) : data?.length === 0 ? (
+        <p className="hint">{t.invite.empty}</p>
+      ) : (
+        <div className="list">
+          {data?.map((c) => (
+            <div key={c.id} className="stack">
+              <div className="pick">
+                {c.photoUrl ? (
+                  <img className="avatar" src={c.photoUrl} alt="" />
+                ) : (
+                  <span className="avatar" />
+                )}
+                <ComedianSummary c={c} />
+                <button
+                  className="link-button"
+                  onClick={() => setOpened(opened === c.id ? null : c.id)}
+                >
+                  {opened === c.id ? t.invite.hideCard : t.invite.showCard}
+                </button>
+              </div>
+              {opened === c.id && <ComedianCardView id={c.id} />}
+            </div>
+          ))}
+        </div>
+      )}
     </Screen>
   );
 }
 
 export function InviteScreen() {
   const { id } = useParams();
-  const { me } = useMe();
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
   const [category, setCategory] = useState<ComedianCategory | ''>('');
   const [freeOnly, setFreeOnly] = useState(true);
   const [selected, setSelected] = useState<string[]>([]);
-  const city = me.organizerProfile?.cityId;
+  const [opened, setOpened] = useState<string | null>(null);
+  // По умолчанию без фильтра: на событие зовут и комиков из других городов.
+  const [city, setCity] = useState<number | null>(null);
   const search = useQuery({
     queryKey: ['comedians', q, category, freeOnly, city],
     queryFn: () =>
       api.comedians({
         q: q.trim() || undefined,
         category: category || undefined,
-        city,
+        city: city ?? undefined,
         freeAtEvent: freeOnly ? id : undefined,
       }),
   });
@@ -348,33 +473,45 @@ export function InviteScreen() {
   return (
     <Screen title={t.invite.title} back={<BackButton to={`/events/${id}/manage`} />}>
       <TextField label={t.invite.search} value={q} onChange={setQ} />
-      <div className="row">
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value as ComedianCategory | '')}
-        >
-          <option value="">{t.invite.anyCategory}</option>
-          {comedianCategories.map((c) => (
-            <option key={c} value={c}>
-              {t.categories[c]}
-            </option>
-          ))}
-        </select>
-        <label className="checkbox grow">
-          <input
-            type="checkbox"
-            checked={freeOnly}
-            onChange={(e) => setFreeOnly(e.target.checked)}
-          />
-          <span>{t.invite.freeOnly}</span>
+      <div className="fields">
+        <CitySelect
+          value={city}
+          onChange={setCity}
+          anyLabel={t.invite.anyCity}
+          onAny={() => setCity(null)}
+        />
+        <label>
+          {t.comedians.category}
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as ComedianCategory | '')}
+          >
+            <option value="">{t.invite.anyCategory}</option>
+            {comedianCategories.map((c) => (
+              <option key={c} value={c}>
+                {t.categories[c]}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
+      <label className="checkbox">
+        <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} />
+        <span>{t.invite.freeOnly}</span>
+      </label>
       {invite.data && (
         <p className="success">
-          {t.invite.result(invite.data.invited.length, invite.data.skipped.length)}
+          {t.invite.result(
+            invite.data.invited.length,
+            invite.data.skipped.length,
+            invite.data.autoAccepted.length,
+          )}
         </p>
       )}
       <ErrorText error={invite.error ?? search.error} />
+      {search.data?.length === COMEDIAN_SEARCH_LIMIT && (
+        <p className="hint">{t.comedians.limited(COMEDIAN_SEARCH_LIMIT)}</p>
+      )}
       {search.isPending ? (
         <p className="hint">{t.loading}</p>
       ) : search.data?.length === 0 ? (
@@ -382,22 +519,28 @@ export function InviteScreen() {
       ) : (
         <div className="list">
           {search.data?.map((c) => (
-            <label key={c.id} className={`pick${selected.includes(c.id) ? ' selected' : ''}`}>
-              <input
-                type="checkbox"
-                checked={selected.includes(c.id)}
-                onChange={() => toggle(c.id)}
-              />
-              {c.photoUrl ? (
-                <img className="avatar" src={c.photoUrl} alt="" />
-              ) : (
-                <span className="avatar" />
-              )}
-              <span className="grow stack-tight">
-                <strong>{c.stageName}</strong>
-                <span className="hint">{t.categories[c.category]}</span>
-              </span>
-            </label>
+            <div key={c.id} className="stack">
+              <label className={`pick${selected.includes(c.id) ? ' selected' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(c.id)}
+                  onChange={() => toggle(c.id)}
+                />
+                {c.photoUrl ? (
+                  <img className="avatar" src={c.photoUrl} alt="" />
+                ) : (
+                  <span className="avatar" />
+                )}
+                <ComedianSummary c={c} />
+                <button
+                  className="link-button"
+                  onClick={() => setOpened(opened === c.id ? null : c.id)}
+                >
+                  {opened === c.id ? t.invite.hideCard : t.invite.showCard}
+                </button>
+              </label>
+              {opened === c.id && <ComedianCardView id={c.id} />}
+            </div>
           ))}
         </div>
       )}

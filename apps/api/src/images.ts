@@ -41,3 +41,15 @@ export async function processPhoto(input: Buffer): Promise<ProcessedPhoto> {
 
   return { original, preview, width: info.width, height: info.height };
 }
+
+export const LOGO_SIZE = 256;
+
+/** Лого площадки: квадрат 256px по центру, без метаданных. */
+export async function processLogo(input: Buffer): Promise<Buffer> {
+  // Проверка формата и EXIF-разворот — те же, что у фото.
+  const { original } = await processPhoto(input);
+  return sharp(original)
+    .resize({ width: LOGO_SIZE, height: LOGO_SIZE, fit: 'cover' })
+    .jpeg({ quality: 85, mozjpeg: true })
+    .toBuffer();
+}

@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ru, type CalendarBusy, type CalendarGig } from '@standup/shared';
-import { api } from '../api';
+import { ru, type CalendarBusy, type CalendarGig, type ScheduleConflict } from '@standup/shared';
+import { api, ApiRequestError } from '../api';
+import { ConflictList } from '../events-ui';
 import { useMe } from '../auth';
-import { formatTime, toLocalParts } from '../format';
+import { formatDateTime, formatTime, toLocalParts } from '../format';
 import { haptic } from '../telegram';
-import { BackButton, ErrorText, Screen, TextField } from '../ui';
+import { CitySelect, ErrorText, MissingText, Screen, TextField, useRequired } from '../ui';
 
 const t = ru.app;
 const c = t.calendar;
@@ -35,7 +36,7 @@ export function CalendarScreen() {
   const { me } = useMe();
   const tz = me.timezone;
   const today = toLocalParts(new Date().toISOString(), tz).date;
-  const [mode, setMode] = useState<'feed' | 'month'>('feed');
+  const [mode, setMode] = useState<'feed' | 'month'>('month');
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -65,9 +66,10 @@ export function CalendarScreen() {
   }, [data, tz]);
 
   return (
-    <Screen title={c.title} back={<BackButton to="/" />}>
+    <Screen title={c.title}>
+      {mode === 'feed' && data && <NextGig items={data.items} tz={tz} />}
       <div className="tabs">
-        {(['feed', 'month'] as const).map((m) => (
+        {(['month', 'feed'] as const).map((m) => (
           <button key={m} className={mode === m ? 'tab active' : 'tab'} onClick={() => setMode(m)}>
             {c[m]}
           </button>
@@ -104,13 +106,45 @@ export function CalendarScreen() {
       )}
 
       {adding ? (
-        <BusyForm tz={tz} defaultDate={selected ?? today} onDone={() => setAdding(false)} />
+        <GigForm
+          tz={tz}
+          cityId={me.comedianProfile?.cityId ?? null}
+          defaultDate={selected ?? today}
+          onDone={() => setAdding(false)}
+        />
       ) : (
         <button className="secondary" onClick={() => setAdding(true)}>
-          + {c.addBusy}
+          + {c.addGig}
         </button>
       )}
     </Screen>
+  );
+}
+
+/** Ближайшее своё выступление: то, ради чего чаще всего открывают приложение. */
+function NextGig({ items, tz }: { items: Item[]; tz: string }) {
+  const now = Date.now();
+  const next = items.find((i) => i.type !== 'busy' && new Date(i.endsAt).getTime() > now);
+  if (!next || next.type === 'busy') return null;
+  const body = (zone: string, place: string | null) => (
+    <>
+      <small>
+        {c.nextGig}
+        {next.type !== 'gig' ? ` · ${c.manualTag}` : ''}
+      </small>
+      <strong>{next.title ?? c.manualGig}</strong>
+      <span>
+        {formatDateTime(next.startsAt, zone)}
+        {place ? ` · ${place}` : ''}
+      </span>
+    </>
+  );
+  return next.type === 'gig' ? (
+    <Link className="next-gig" to={`/events/${next.eventId}`}>
+      {body(next.timezone, next.venue)}
+    </Link>
+  ) : (
+    <div className="next-gig">{body(tz, next.venueText)}</div>
   );
 }
 
@@ -160,16 +194,20 @@ function BusyCard({ busy, tz }: { busy: CalendarBusy; tz: string }) {
     mutationFn: () => api.deleteBusy(busy.id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['calendar'] }),
   });
+  const kind = busy.type === 'busy' ? c.busy : c.manualGig;
+  // Название (или вид записи, если названия нет), под ним — только площадка.
+  const details = busy.venueText;
   return (
     <div className={`event-card ${busy.type === 'busy' ? 'busy' : 'manual'}`}>
-      <span className="event-when">
-        {formatTime(busy.startsAt, tz)}–{formatTime(busy.endsAt, tz)}
+      <span className="event-head">
+        <span className="event-when">
+          {formatTime(busy.startsAt, tz)}–{formatTime(busy.endsAt, tz)}
+        </span>
+        {/* Своё выступление не связано с событиями организаторов — помечаем, чтобы не путать. */}
+        {busy.type === 'manual_gig' && <span className="tag">{c.manualTag}</span>}
       </span>
-      <strong>{busy.title || (busy.type === 'busy' ? c.busy : c.manualGig)}</strong>
-      <span className="hint">
-        {busy.type === 'busy' ? c.busy : c.manualGig}
-        {busy.venueText ? ` · ${busy.venueText}` : ''}
-      </span>
+      <strong>{busy.title || kind}</strong>
+      {details && <span className="hint">{details}</span>}
       <button
         className="link-button danger-text"
         disabled={remove.isPending}
@@ -207,12 +245,12 @@ function MonthGrid({
   }).format(new Date(`${first}T00:00:00Z`));
   return (
     <section className="card">
-      <div className="row">
-        <button className="secondary" aria-label="prev" onClick={() => onMonth(-1)}>
+      <div className="month-nav">
+        <button className="nav-arrow" aria-label="prev" onClick={() => onMonth(-1)}>
           {c.prev}
         </button>
-        <strong className="grow center-text">{title}</strong>
-        <button className="secondary" aria-label="next" onClick={() => onMonth(1)}>
+        <strong className="center-text">{title}</strong>
+        <button className="nav-arrow" aria-label="next" onClick={() => onMonth(1)}>
           {c.next}
         </button>
       </div>
@@ -246,32 +284,58 @@ function MonthGrid({
   );
 }
 
-function BusyForm({
+/** Своё выступление закрывает в календаре два часа от начала. */
+const GIG_HOURS = 2;
+const OTHER = 'other';
+
+/** Своё выступление вне приложения: площадка из списка (или своя), дата и время. */
+function GigForm({
   tz,
+  cityId: profileCity,
   defaultDate,
   onDone,
 }: {
   tz: string;
+  cityId: number | null;
   defaultDate: string;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [kind, setKind] = useState<'busy' | 'manual_gig'>('busy');
+  const [cityId, setCityId] = useState(profileCity);
+  const [venueId, setVenueId] = useState('');
+  const [otherVenue, setOtherVenue] = useState('');
   const [date, setDate] = useState(defaultDate);
-  const [from, setFrom] = useState('19:00');
-  const [to, setTo] = useState('22:00');
+  const [from, setFrom] = useState('20:00');
   const [title, setTitle] = useState('');
-  const [venue, setVenue] = useState('');
+  const venues = useQuery({
+    queryKey: ['venues', cityId],
+    queryFn: () => api.venues(cityId!),
+    enabled: cityId !== null,
+  });
+  const venueName =
+    venueId === OTHER
+      ? otherVenue.trim()
+      : (venues.data?.find((v) => v.id === venueId)?.name ?? '');
+
+  const required = useRequired([
+    [c.venue, venueId !== ''],
+    [c.otherVenueName, venueId !== OTHER || otherVenue.trim() !== ''],
+    [c.date, date !== ''],
+    [c.from, from !== ''],
+  ]);
   const add = useMutation({
-    mutationFn: () =>
-      api.addBusy({
-        kind,
+    mutationFn: () => {
+      const [h, m] = from.split(':').map(Number) as [number, number];
+      const endHour = h + GIG_HOURS;
+      const end = `${String(endHour % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      return api.addBusy({
+        kind: 'manual_gig',
         startsAtLocal: `${date}T${from}`,
-        // Окончание раньше начала — значит, после полуночи.
-        endsAtLocal: `${to > from ? date : addDays(date, 1)}T${to}`,
+        endsAtLocal: `${endHour >= 24 ? addDays(date, 1) : date}T${end}`,
         title: title.trim() || null,
-        venueText: kind === 'manual_gig' ? venue.trim() || null : null,
-      }),
+        venueText: venueName || null,
+      });
+    },
     onSuccess: () => {
       haptic('success');
       void queryClient.invalidateQueries({ queryKey: ['calendar'] });
@@ -281,39 +345,62 @@ function BusyForm({
   });
   return (
     <section className="card">
-      <h2>{c.addBusy}</h2>
-      <label>
-        {c.kind}
-        <select value={kind} onChange={(e) => setKind(e.target.value as 'busy' | 'manual_gig')}>
-          <option value="busy">{c.busy}</option>
-          <option value="manual_gig">{c.manualGig}</option>
+      <h2>{c.addGig}</h2>
+      <CitySelect
+        value={cityId}
+        onChange={(id) => {
+          setCityId(id);
+          setVenueId('');
+        }}
+      />
+      <label className={required.isMissing(c.venue) ? 'invalid' : undefined}>
+        {c.venue}
+        <select value={venueId} onChange={(e) => setVenueId(e.target.value)}>
+          <option value="" disabled>
+            {c.venuePlaceholder}
+          </option>
+          {venues.data?.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name}
+            </option>
+          ))}
+          <option value={OTHER}>{c.otherVenue}</option>
         </select>
       </label>
-      <label>
-        {c.date}
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </label>
-      <div className="row">
-        <label>
+      {venueId === OTHER && (
+        <TextField
+          label={c.otherVenueName}
+          value={otherVenue}
+          invalid={required.isMissing(c.otherVenueName)}
+          onChange={setOtherVenue}
+        />
+      )}
+      <div className="fields">
+        <label className={required.isMissing(c.date) ? 'invalid' : undefined}>
+          {c.date}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label className={required.isMissing(c.from) ? 'invalid' : undefined}>
           {c.from}
           <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label>
-          {c.to}
-          <input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
       </div>
       <span className="field-hint">{t.eventForm.timezoneHint(tz)}</span>
       <TextField label={c.title_} optional value={title} onChange={setTitle} />
-      {kind === 'manual_gig' && (
-        <TextField label={c.venue} optional value={venue} onChange={setVenue} />
+      <MissingText missing={required.missing} />
+      {add.error instanceof ApiRequestError && add.error.code === 'CONFLICT_SCHEDULE' ? (
+        <ConflictList
+          conflicts={(add.error.details as { conflicts?: ScheduleConflict[] })?.conflicts ?? []}
+          timezone={tz}
+        />
+      ) : (
+        <ErrorText error={add.error} />
       )}
-      <ErrorText error={add.error} />
-      <div className="row">
-        <button disabled={!date || !from || !to || add.isPending} onClick={() => add.mutate()}>
+      <div className="action-bar">
+        <button disabled={add.isPending} onClick={() => required.check() && add.mutate()}>
           {c.save}
         </button>
-        <button className="secondary" onClick={onDone}>
+        <button className="outline" onClick={onDone}>
           {t.back}
         </button>
       </div>

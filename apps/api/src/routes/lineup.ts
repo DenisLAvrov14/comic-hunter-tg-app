@@ -7,14 +7,17 @@ import {
   findEvent,
   findEventWithRefs,
   findParticipation,
+  findStaff,
   findUserById,
   getUserRoles,
   listEventParticipations,
   listHostedEvents,
   listStaff,
+  listStaffStatuses,
   lockEvent,
   recordParticipationEvent,
   searchHosts,
+  setStaffStatus,
   updateParticipation,
   upsertStaff,
   type Db,
@@ -26,12 +29,14 @@ import {
   AttendanceRequest,
   BroadcastRequest,
   DayConfirmationRequest,
+  HostingAnswerRequest,
   LineupOrderRequest,
   ReplacementRequest,
   StaffPermissionsRequest,
   type BroadcastResponse,
-  type EventSummary,
   type HostCandidate,
+  type HostingItem,
+  type StaffStatus,
   type Lineup,
   type MyParticipation,
   type PosterText,
@@ -260,7 +265,9 @@ export const lineupRoutes: FastifyPluginAsync<{
         )
       ).map((c) => [c.userId, c]),
     );
-    const hosts = (await listStaff(db, id)).map((s) => s.name);
+    const hosts = (await listStaff(db, id))
+      .filter((s) => s.status === 'accepted')
+      .map((s) => s.name);
     return {
       text: buildPosterText({
         title: row.event.title,
@@ -296,8 +303,24 @@ export const lineupRoutes: FastifyPluginAsync<{
     if (!(await getUserRoles(db, userId)).includes('host')) {
       throw new ApiError('VALIDATION', 'У пользователя нет роли ведущего', { field: 'userId' });
     }
-    await upsertStaff(db, { eventId: id, userId, permissions });
+    await db.transaction(async (tx) => {
+      const before = await findStaff(tx, id, userId);
+      await upsertStaff(tx, { eventId: id, userId, permissions });
+      // Новое приглашение (или повторное после отказа) — ведущему пишет бот.
+      if (!before || before.status === 'declined') {
+        await enqueueNow(tx, [{ userId, kind: 'host_invitation', eventId: id }], new Date());
+      }
+    });
     return lineupOf(id);
+  });
+
+  /** Ведущий принимает приглашение или отказывается. */
+  app.post('/events/:id/hosting', async (req): Promise<{ status: StaffStatus }> => {
+    const { id } = IdParams.parse(req.params);
+    const { value } = HostingAnswerRequest.parse(req.body);
+    const row = await setStaffStatus(db, id, req.user.sub, value);
+    if (!row) throw new ApiError('NOT_FOUND');
+    return { status: row.status };
   });
 
   app.delete('/events/:id/staff/:userId', async (req): Promise<Lineup> => {
@@ -307,7 +330,19 @@ export const lineupRoutes: FastifyPluginAsync<{
     return lineupOf(id);
   });
 
-  app.get('/me/hosting', async (req): Promise<EventSummary[]> =>
-    (await listHostedEvents(db, req.user.sub, new Date())).map(toEventSummary),
-  );
+  app.get('/me/hosting', async (req): Promise<HostingItem[]> => {
+    const rows = await listHostedEvents(db, req.user.sub, new Date());
+    const statuses = new Map(
+      (
+        await listStaffStatuses(
+          db,
+          req.user.sub,
+          rows.map((r) => r.event.id),
+        )
+      ).map((s) => [s.eventId, s.status]),
+    );
+    return rows
+      .map((r) => ({ event: toEventSummary(r), status: statuses.get(r.event.id) ?? 'invited' }))
+      .filter((x) => x.status !== 'declined');
+  });
 };
