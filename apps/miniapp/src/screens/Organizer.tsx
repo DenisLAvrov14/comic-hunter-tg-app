@@ -29,6 +29,7 @@ import {
   useCities,
   useRequired,
 } from '../ui';
+import { Select } from '../select';
 
 const t = ru.app;
 
@@ -224,7 +225,7 @@ function EventForm({ event }: { event?: EventDetails }) {
         />
         <label className={required.isMissing(f.venue) ? 'invalid' : undefined}>
           {t.eventForm.venue}
-          <select value={d.venueId} onChange={(e) => set('venueId', e.target.value)}>
+          <Select value={d.venueId} onChange={(v) => set('venueId', v)}>
             <option value="" disabled>
               {t.eventForm.venuePlaceholder}
             </option>
@@ -233,7 +234,7 @@ function EventForm({ event }: { event?: EventDetails }) {
                 {v.name} — {v.address}
               </option>
             ))}
-          </select>
+          </Select>
           {venues.data?.length === 0 && (
             <span className="field-hint">
               <Link to="/venues">{t.eventForm.noVenues}</Link>
@@ -242,13 +243,13 @@ function EventForm({ event }: { event?: EventDetails }) {
         </label>
         <label>
           {t.eventForm.format}
-          <select value={d.format} onChange={(e) => set('format', e.target.value as EventFormat)}>
+          <Select value={d.format} onChange={(v) => set('format', v as EventFormat)}>
             {selectableEventFormats.map((f) => (
               <option key={f} value={f}>
                 {t.formatOptions[f]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <TextField
           label={t.eventForm.formatNote}
@@ -385,17 +386,14 @@ export function ComediansScreen() {
       <div className="fields">
         <label>
           {t.comedians.category}
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as ComedianCategory | '')}
-          >
+          <Select value={category} onChange={(v) => setCategory(v as ComedianCategory | '')}>
             <option value="">{t.invite.anyCategory}</option>
             {comedianCategories.map((c) => (
               <option key={c} value={c}>
                 {t.categories[c]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           {t.comedians.date}
@@ -482,17 +480,14 @@ export function InviteScreen() {
         />
         <label>
           {t.comedians.category}
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as ComedianCategory | '')}
-          >
+          <Select value={category} onChange={(v) => setCategory(v as ComedianCategory | '')}>
             <option value="">{t.invite.anyCategory}</option>
             {comedianCategories.map((c) => (
               <option key={c} value={c}>
                 {t.categories[c]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       <label className="checkbox">

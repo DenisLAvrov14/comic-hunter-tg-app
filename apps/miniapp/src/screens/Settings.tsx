@@ -10,6 +10,7 @@ import { api } from '../api';
 import { useMe } from '../auth';
 import { askWriteAccess, haptic, openExternal } from '../telegram';
 import { BackButton, ErrorText, MainButton, Screen, TextField } from '../ui';
+import { Select } from '../select';
 
 const t = ru.app;
 const s = t.settings;
@@ -60,17 +61,14 @@ export function SettingsScreen() {
         </label>
         <label>
           {s.preShow}
-          <select
-            value={preShow ?? ''}
-            onChange={(e) => setPreShow(e.target.value === '' ? null : Number(e.target.value))}
-          >
+          <Select value={preShow ?? ''} onChange={(v) => setPreShow(v === '' ? null : Number(v))}>
             <option value="">{s.preShowOff}</option>
             {PRE_SHOW.map((m) => (
               <option key={m} value={m}>
                 {s.minutes(m)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </section>
       <ErrorText error={error} />

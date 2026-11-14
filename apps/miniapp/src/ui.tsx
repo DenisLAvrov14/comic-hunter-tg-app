@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { filterCityNames, regionOf, regions, ru, type City, type Region } from '@standup/shared';
 import { api } from './api';
 import { haptic, isInTelegram, onMainButton, setMainButton, showBackButton } from './telegram';
+import { Select } from './select';
 
 const t = ru.app;
 
@@ -170,10 +171,7 @@ export function CitySelect({
   return (
     <label className={invalid ? 'invalid' : undefined}>
       {label}
-      <select
-        value={value ?? ''}
-        onChange={(e) => (e.target.value ? onChange(Number(e.target.value)) : onAny?.())}
-      >
+      <Select value={value ?? ''} onChange={(v) => (v ? onChange(Number(v)) : onAny?.())}>
         <option value="" disabled={!anyLabel}>
           {anyLabel ?? t.fields.cityPlaceholder}
         </option>
@@ -186,7 +184,7 @@ export function CitySelect({
             ))}
           </optgroup>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

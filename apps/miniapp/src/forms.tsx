@@ -13,6 +13,7 @@ import {
   type UserRole,
 } from '@standup/shared';
 import { CitySelect, TextField } from './ui';
+import { Select } from './select';
 
 const t = ru.app;
 
@@ -136,16 +137,13 @@ export function ComedianFields({
         <>
           <label>
             {t.fields.category}
-            <select
-              value={draft.category}
-              onChange={(e) => set('category', e.target.value as ComedianCategory)}
-            >
+            <Select value={draft.category} onChange={(v) => set('category', v as ComedianCategory)}>
               {comedianCategories.map((c) => (
                 <option key={c} value={c}>
                   {t.categories[c]}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <TextField
             label={t.fields.bio}
@@ -223,16 +221,13 @@ function LinksEditor({
       </span>
       {links.map((link, i) => (
         <div className="row" key={i}>
-          <select
-            value={link.type}
-            onChange={(e) => update(i, { type: e.target.value as LinkType })}
-          >
+          <Select value={link.type} onChange={(v) => update(i, { type: v as LinkType })}>
             {listLinkTypes.map((lt) => (
               <option key={lt} value={lt}>
                 {t.linkTypes[lt]}
               </option>
             ))}
-          </select>
+          </Select>
           <input
             className="grow"
             type="url"

@@ -8,6 +8,7 @@ import { useMe } from '../auth';
 import { formatDateTime, formatTime, toLocalParts } from '../format';
 import { haptic } from '../telegram';
 import { CitySelect, ErrorText, MissingText, Screen, TextField, useRequired } from '../ui';
+import { Select } from '../select';
 
 const t = ru.app;
 const c = t.calendar;
@@ -355,7 +356,7 @@ function GigForm({
       />
       <label className={required.isMissing(c.venue) ? 'invalid' : undefined}>
         {c.venue}
-        <select value={venueId} onChange={(e) => setVenueId(e.target.value)}>
+        <Select value={venueId} onChange={(v) => setVenueId(v)}>
           <option value="" disabled>
             {c.venuePlaceholder}
           </option>
@@ -365,7 +366,7 @@ function GigForm({
             </option>
           ))}
           <option value={OTHER}>{c.otherVenue}</option>
-        </select>
+        </Select>
       </label>
       {venueId === OTHER && (
         <TextField

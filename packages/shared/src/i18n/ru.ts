@@ -190,6 +190,7 @@ export const ru = {
       hide: 'Скрыть профиль',
     },
     rolesScreen: { title: 'Мои роли' },
+    select: { search: 'Поиск', empty: 'Ничего не найдено' },
     account: {
       deletedName: 'Удалённый пользователь',
       delete: 'Удалить аккаунт',

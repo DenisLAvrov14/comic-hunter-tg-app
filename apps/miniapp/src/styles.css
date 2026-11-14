@@ -123,6 +123,7 @@ a {
 
 input,
 select,
+.select-trigger,
 textarea {
   font: inherit;
   width: 100%;
@@ -135,7 +136,8 @@ textarea {
 }
 
 input:not([type='checkbox'], [type='file']),
-select {
+select,
+.select-trigger {
   height: 44px;
 }
 
@@ -197,7 +199,10 @@ input::-webkit-datetime-edit-fields-wrapper {
 .screen > .row > input,
 .screen > .row > select,
 .screen > .fields input,
-.screen > .fields select {
+.screen > .fields select,
+.screen > label > .select-trigger,
+.screen > .row > .select-trigger,
+.screen > .fields .select-trigger {
   /* Только цвет: shorthand сбросил бы значок в полях даты и времени. */
   background-color: var(--section-bg);
 }
@@ -242,7 +247,8 @@ label.checkbox input {
   align-items: center;
 }
 
-.row > select {
+.row > select,
+.row > .select-trigger {
   width: auto;
   flex: 0 0 auto;
 }
@@ -879,7 +885,7 @@ label.invalid {
   color: var(--danger);
 }
 
-label.invalid :is(input, select, textarea) {
+label.invalid :is(input, select, textarea, .select-trigger) {
   color: var(--text);
   box-shadow: 0 0 0 2px var(--danger);
 }
@@ -1117,4 +1123,126 @@ button.nav-arrow {
   margin-top: 32px;
   display: grid;
   gap: 8px;
+}
+
+/* --- Выпадающий список на компьютере (select.tsx); на телефоне — системный --- */
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-trigger > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-trigger.placeholder > span {
+  color: var(--hint);
+}
+
+.select-trigger svg,
+.select-option svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.select-trigger svg {
+  stroke: var(--hint);
+}
+
+.select-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--button) 60%, transparent);
+  outline-offset: 1px;
+}
+
+.select-popover {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--hint) 22%, transparent),
+    0 10px 30px rgb(0 0 0 / 0.18);
+  outline: none;
+  font-size: 15px;
+}
+
+.select-search:focus {
+  outline: none;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--button) 70%, transparent);
+}
+
+.select-search {
+  flex: 0 0 auto;
+  height: 36px;
+  margin: 2px 2px 6px;
+  width: auto;
+  background-color: var(--section-bg);
+}
+
+.select-list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.select-group {
+  padding: 10px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hint);
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.select-option > span {
+  flex: 1;
+}
+
+.select-option.active {
+  background: color-mix(in srgb, var(--button) 14%, transparent);
+}
+
+.select-option[aria-selected='true'] {
+  color: var(--link);
+  font-weight: 600;
+}
+
+.select-option[aria-selected='true'] svg {
+  stroke: var(--link);
+}
+
+.select-option[aria-disabled='true'] {
+  color: var(--hint);
+  cursor: default;
+}
+
+.select-empty {
+  padding: 10px;
+  color: var(--hint);
 }

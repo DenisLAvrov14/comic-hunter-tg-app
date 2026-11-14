@@ -31,6 +31,7 @@ import {
   useCities,
   useRequired,
 } from '../ui';
+import { Select } from '../select';
 
 const t = ru.app;
 
@@ -66,14 +67,14 @@ export function OpenEventsScreen() {
       <div className="fields">
         <label>
           {t.eventForm.format}
-          <select value={format} onChange={(e) => setFormat(e.target.value as EventFormat | '')}>
+          <Select value={format} onChange={(v) => setFormat(v as EventFormat | '')}>
             <option value="">{t.events.allFormats}</option>
             {selectableEventFormats.map((f) => (
               <option key={f} value={f}>
                 {t.formats[f]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           {t.events.fromDate}

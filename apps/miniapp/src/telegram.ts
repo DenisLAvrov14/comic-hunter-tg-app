@@ -64,6 +64,26 @@ export function isInTelegram() {
   return inTelegram;
 }
 
+// Клиенты Telegram для компьютера: Desktop, macOS, веб-версии.
+const DESKTOP_PLATFORMS = new Set(['tdesktop', 'macos', 'web', 'weba', 'webk', 'unigram']);
+let desktop: boolean | undefined;
+
+/**
+ * Компьютер, а не телефон. На телефоне системные списки выглядят хорошо (барабан iOS,
+ * окно Android), на компьютере — заменяем своими. Вне Telegram — по типу указателя.
+ */
+export function isDesktop(): boolean {
+  if (desktop !== undefined) return desktop;
+  try {
+    desktop = inTelegram
+      ? DESKTOP_PLATFORMS.has(retrieveLaunchParams().tgWebAppPlatform)
+      : window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  } catch {
+    desktop = false;
+  }
+  return desktop;
+}
+
 /** На экранах с drag-and-drop вертикальный свайп не должен закрывать Mini App. */
 export function setVerticalSwipes(enabled: boolean) {
   if (!inTelegram) return;
