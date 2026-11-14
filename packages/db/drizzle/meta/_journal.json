@@ -71,6 +71,13 @@
       "when": 1794315111284,
       "tag": "0009_good_mephistopheles",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794656993245,
+      "tag": "0010_plain_venus",
+      "breakpoints": true
     }
   ]
 }

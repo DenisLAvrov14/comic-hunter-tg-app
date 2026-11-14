@@ -35,13 +35,15 @@ import { rescheduleForUser } from '@standup/notify';
 import { ApiError } from '../errors';
 import { processPhoto } from '../images';
 import { processImage, readUpload } from '../upload';
+import { deleteAccount } from '../services/account';
 import { loadMe, toPhoto } from '../services/me';
 import type { FileStorage } from '../storage';
 
-export const meRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = async (
-  app,
-  { db, storage },
-) => {
+export const meRoutes: FastifyPluginAsync<{
+  db: Db;
+  storage: FileStorage;
+  onEventChanged: (eventId: string) => Promise<void>;
+}> = async (app, { db, storage, onEventChanged }) => {
   app.addHook('onRequest', app.authenticate);
 
   async function requireRole(userId: string, role: 'comedian' | 'organizer') {
@@ -57,6 +59,13 @@ export const meRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = as
   }
 
   app.get('/me', async (req): Promise<Me> => loadMe(db, storage, req.user.sub));
+
+  // Удаление аккаунта с анонимизацией истории (SPEC §11).
+  app.delete('/me', async (req, reply) => {
+    const { changedEvents } = await deleteAccount(db, storage, req.user.sub);
+    for (const id of changedEvents) await onEventChanged(id);
+    return reply.status(204).send();
+  });
 
   // --- Поездки комика ---
 

@@ -3,3 +3,6 @@
 **/coverage
 .env
 .git
+.env.*
+!.env.example
+deploy

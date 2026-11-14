@@ -103,6 +103,7 @@ export const api = {
   authTelegram: (initData: string) => request<AuthResponse>('POST', '/auth/telegram', { initData }),
   authDev: (body: DevAuthRequest) => request<AuthResponse>('POST', '/auth/dev', body),
   me: () => request<Me>('GET', '/me'),
+  deleteMe: () => request<void>('DELETE', '/me'),
   patchMe: (body: PatchMeRequest) => request<Me>('PATCH', '/me', body),
   putRoles: (roles: UserRole[]) => request<Me>('PUT', '/me/roles', { roles }),
   putComedianProfile: (body: ComedianProfileInput) =>

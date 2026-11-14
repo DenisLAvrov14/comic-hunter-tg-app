@@ -22,4 +22,5 @@ export * from './repositories/reference';
 export * from './repositories/events';
 export * from './repositories/calendar';
 export * from './repositories/chats';
+export * from './repositories/account';
 export { and, eq, inArray, sql } from 'drizzle-orm';

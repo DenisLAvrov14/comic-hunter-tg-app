@@ -59,6 +59,8 @@ export const users = pgTable('users', {
   // и напоминание за N минут до выхода (null — выключено).
   digestTime: text('digest_time').notNull().default('10:00'),
   preShowMinutes: integer('pre_show_minutes').default(30),
+  // Аккаунт удалён (DELETE /me): персональные данные стёрты, строка оставлена для истории.
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

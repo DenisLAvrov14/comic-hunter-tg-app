@@ -1,0 +1,149 @@
+# Боевой стек. Запуск на сервере:
+#   cp .env.production.example .env   # заполнить
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Наружу открыты только 80/443 (Caddy, автоматический сертификат Let's Encrypt).
+# Все секреты обязательны: без них compose не стартует (${VAR:?}).
+name: standup-prod
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: '20m', max-file: '5' }
+
+x-node-env: &node-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://standup:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}@postgres:5432/standup
+  REDIS_URL: redis://redis:6379
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  BOT_TOKEN: ${BOT_TOKEN:?задайте BOT_TOKEN}
+  BOT_USERNAME: ${BOT_USERNAME:?задайте BOT_USERNAME}
+  MINIAPP_SHORT_NAME: ${MINIAPP_SHORT_NAME:?задайте MINIAPP_SHORT_NAME}
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:?задайте INTERNAL_TOKEN}
+
+x-node-service: &node-service
+  image: standup-calendar-node:prod
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: standup
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}
+      POSTGRES_DB: standup
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U standup']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    # Очередь BullMQ переживает перезапуск; источник правды — scheduled_notifications в Postgres.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      retries: 20
+
+  # Фото. Можно заменить любым S3-совместимым хранилищем: задать S3_* в .env,
+  # убрать этот сервис и location /media/ в apps/miniapp/nginx.conf.
+  minio:
+    image: docker.io/bitnamilegacy/minio:2025.4.22
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?задайте S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?задайте S3_SECRET_KEY}
+    volumes: [miniodata:/bitnami/minio/data]
+
+  migrate:
+    <<: *node-service
+    build: { context: ., target: node-app }
+    restart: 'no'
+    command: pnpm --filter @standup/db migrate
+    environment: *node-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *node-service
+    command: pnpm --filter @standup/api start
+    environment:
+      <<: *node-env
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET}
+      DEV_AUTH: 'false'
+      PUBLIC_BASE_URL: https://${DOMAIN:?задайте DOMAIN}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-standup}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-/media}
+      # Для встроенного MinIO: создать бакет и открыть photos/ на чтение.
+      S3_CREATE_BUCKET: ${S3_CREATE_BUCKET:-true}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      minio: { condition: service_started }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  bot:
+    <<: *node-service
+    command: pnpm --filter @standup/bot start
+    environment:
+      <<: *node-env
+      MINIAPP_URL: https://${DOMAIN}
+      BOT_MODE: webhook
+      BOT_WEBHOOK_PORT: '3001'
+      BOT_WEBHOOK_URL: https://${DOMAIN}/bot/webhook
+      BOT_WEBHOOK_SECRET: ${BOT_WEBHOOK_SECRET:?задайте BOT_WEBHOOK_SECRET}
+      API_INTERNAL_URL: http://api:3000
+    depends_on:
+      api: { condition: service_healthy }
+
+  worker:
+    <<: *node-service
+    command: pnpm --filter @standup/worker start
+    environment: *node-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  miniapp:
+    image: standup-calendar-miniapp:prod
+    build: { context: ., target: miniapp }
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      api: { condition: service_healthy }
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    logging: *logging
+    ports: ['80:80', '443:443', '443:443/udp']
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [miniapp, bot]
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  caddydata:
+  caddyconfig:

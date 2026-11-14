@@ -53,7 +53,7 @@ export async function buildApp({ config, db, storage, poster }: AppDeps) {
   await app.register(rateLimit, { global: false });
   await app.register(jwt, { secret: config.jwtSecret, sign: { expiresIn: '7d' } });
   await app.register(multipart);
-  await app.register(authPlugin);
+  await app.register(authPlugin, { db });
 
   const links = { botUsername: config.botUsername, miniAppShortName: config.miniAppShortName };
   /** Событие или состав изменились — обновить анонсы в чатах (SPEC §7.4). */
@@ -71,7 +71,7 @@ export async function buildApp({ config, db, storage, poster }: AppDeps) {
   await app.register(
     async (api) => {
       await api.register(authRoutes, { config, db, storage });
-      await api.register(meRoutes, { db, storage });
+      await api.register(meRoutes, { db, storage, onEventChanged });
       await api.register(referenceRoutes, { db, storage });
       await api.register(eventRoutes, { db, storage, onEventChanged });
       await api.register(lineupRoutes, { db, storage });

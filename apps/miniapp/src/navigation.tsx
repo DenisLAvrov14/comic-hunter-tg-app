@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { ru, userRoles, type Badges, type UserRole } from '@standup/shared';
-import { api } from './api';
+import { api, setToken } from './api';
 import { useMe } from './auth';
 import { haptic } from './telegram';
-import { Screen } from './ui';
+import { ErrorText, Screen } from './ui';
 
 const t = ru.app;
 const ROLE_KEY = 'standup.activeRole';
@@ -218,6 +218,26 @@ export function RoleHome() {
 export function MoreScreen() {
   const { active } = useActiveRole();
   const { me } = useMe();
+  const remove = useMutation({
+    mutationFn: api.deleteMe,
+    onSuccess: () => {
+      setToken(null);
+      try {
+        localStorage.clear();
+      } catch {
+        // Хранилище недоступно — чистить нечего.
+      }
+      haptic('success');
+    },
+    onError: () => haptic('error'),
+  });
+  if (remove.isSuccess) {
+    return (
+      <Screen title={t.account.delete}>
+        <p>{t.account.deleted}</p>
+      </Screen>
+    );
+  }
   return (
     <Screen title={t.tabs.more}>
       <nav className="list">
@@ -227,6 +247,20 @@ export function MoreScreen() {
         <Link to="/settings">{t.menu.notifications}</Link>
         <Link to="/roles">{t.menu.roles}</Link>
       </nav>
+      <section className="account-delete">
+        <p className="hint">{t.account.deleteHint}</p>
+        <button
+          type="button"
+          className="secondary danger-text"
+          disabled={remove.isPending}
+          onClick={() => {
+            if (window.confirm(t.account.deleteConfirm)) remove.mutate();
+          }}
+        >
+          {t.account.delete}
+        </button>
+        {remove.isError && <ErrorText error={remove.error} />}
+      </section>
     </Screen>
   );
 }

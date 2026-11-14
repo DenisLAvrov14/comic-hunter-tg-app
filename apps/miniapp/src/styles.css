@@ -1112,3 +1112,9 @@ button.nav-arrow {
   background: var(--bg);
   color: var(--link);
 }
+
+.account-delete {
+  margin-top: 32px;
+  display: grid;
+  gap: 8px;
+}

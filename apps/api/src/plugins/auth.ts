@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
+import { findUserById, type Db } from '@standup/db';
 import { ApiError } from '../errors';
 
 export interface JwtPayload {
@@ -19,13 +20,16 @@ declare module 'fastify' {
   }
 }
 
-const plugin: FastifyPluginAsync = async (app) => {
+const plugin: FastifyPluginAsync<{ db: Db }> = async (app, { db }) => {
   app.decorate('authenticate', async (req: FastifyRequest) => {
     try {
       await req.jwtVerify();
     } catch {
       throw new ApiError('UNAUTHORIZED');
     }
+    // JWT живёт 7 дней: после удаления аккаунта выданные токены не должны работать.
+    const user = await findUserById(db, req.user.sub);
+    if (!user || user.deletedAt) throw new ApiError('UNAUTHORIZED');
   });
 };
 

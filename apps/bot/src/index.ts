@@ -5,6 +5,9 @@ import { createDb } from '@standup/db';
 import { createBot } from './bot';
 import { loadConfig } from './config';
 
+// my_chat_member — бота добавили в группу или канал (анонсы, SPEC §7.4).
+const ALLOWED_UPDATES = ['message', 'callback_query', 'my_chat_member'] as const;
+
 const config = loadConfig();
 const log = pino({ level: config.LOG_LEVEL, redact: ['token'] });
 
@@ -18,8 +21,6 @@ if (!config.BOT_TOKEN) {
   await setup();
 
   if (config.BOT_MODE === 'webhook') {
-    if (!config.BOT_WEBHOOK_SECRET)
-      throw new Error('BOT_WEBHOOK_SECRET обязателен в режиме webhook');
     const handle = webhookCallback(bot, 'http', { secretToken: config.BOT_WEBHOOK_SECRET });
     const server = createServer((req, res) => {
       if (req.method === 'POST' && req.url === '/bot/webhook') return void handle(req, res);
@@ -28,14 +29,24 @@ if (!config.BOT_TOKEN) {
     server.listen(config.BOT_WEBHOOK_PORT, () =>
       log.info({ port: config.BOT_WEBHOOK_PORT }, 'bot webhook server started'),
     );
+    // Регистрируем адрес при каждом старте: смена домена или секрета подхватится сама.
+    await bot.api.setWebhook(config.BOT_WEBHOOK_URL, {
+      secret_token: config.BOT_WEBHOOK_SECRET,
+      allowed_updates: ALLOWED_UPDATES,
+    });
+    log.info('bot webhook registered');
   } else {
     await bot.api.deleteWebhook();
-    void bot.start({ onStart: (me) => log.info({ username: me.username }, 'bot polling started') });
+    void bot.start({
+      allowed_updates: ALLOWED_UPDATES,
+      onStart: (me) => log.info({ username: me.username }, 'bot polling started'),
+    });
   }
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, async () => {
-      await bot.stop();
+      // Вебхук не снимаем: Telegram подождёт с доставкой, пока бот перезапускается.
+      if (bot.isRunning()) await bot.stop();
       await close();
       process.exit(0);
     });

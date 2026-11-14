@@ -1,0 +1,37 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Вебхук Telegram — сразу в бот (секрет проверяет grammY по заголовку).
+	handle /bot/webhook {
+		reverse_proxy bot:3001
+	}
+
+	# Всё остальное — nginx Mini App: статика, /api, /media, /cal.
+	handle {
+		reverse_proxy miniapp:80
+	}
+
+	log {
+		output stdout
+		# Токены лент и ссылок записи не пишем в лог (как в nginx.conf).
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp ^/(cal|join|api/v1/events/by-link)/.* /${1}/***
+				request>headers>Authorization delete
+				request>headers>X-Telegram-Bot-Api-Secret-Token delete
+			}
+		}
+	}
+}
