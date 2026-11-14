@@ -57,7 +57,7 @@ cloudflared tunnel --url http://localhost:8080
 Требования к серверу: Linux, Docker с compose-плагином, 2 ГБ RAM, домен с A-записью на сервер.
 
 ```sh
-git clone <repo> /opt/standup && cd /opt/standup
+git clone <repo> /opt/standup_calendar && cd /opt/standup_calendar
 cp .env.production.example .env   # заполнить; секреты — openssl rand -hex 32
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps    # migrate — Exited (0), остальные Up
@@ -82,7 +82,7 @@ docker compose -f docker-compose.prod.yml up -d --build   # migrate примен
 [deploy/backup.sh](deploy/backup.sh) — дамп Postgres (`pg_dump -Fc`) и архив фото из MinIO в `BACKUP_DIR` (по умолчанию `/var/backups/standup`), хранит 14 дней. В cron:
 
 ```sh
-30 3 * * * cd /opt/standup && ./deploy/backup.sh >> /var/log/standup-backup.log 2>&1
+30 3 * * * cd /opt/standup_calendar && ./deploy/backup.sh >> /var/log/standup_calendar-backup.log 2>&1
 ```
 
 Копии стоит регулярно уносить с сервера (rsync/rclone в другое хранилище).

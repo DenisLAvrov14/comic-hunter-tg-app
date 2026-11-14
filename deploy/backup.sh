@@ -1,12 +1,12 @@
 #!/bin/sh
 # Ежедневный бэкап боевого стека: дамп Postgres и архив фото из MinIO.
 # Запуск из корня репозитория на сервере; cron (03:30 каждый день):
-#   30 3 * * * cd /opt/standup && ./deploy/backup.sh >> /var/log/standup-backup.log 2>&1
+#   30 3 * * * cd /opt/standup_calendar && ./deploy/backup.sh >> /var/log/standup_calendar-backup.log 2>&1
 # Восстановление — README, раздел «Деплой → Бэкапы».
 set -eu
 
 COMPOSE="docker compose -f docker-compose.prod.yml"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/standup}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/standup_calendar}"
 KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 

@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 # Наружу открыты только 80/443 (Caddy, автоматический сертификат Let's Encrypt).
 # Все секреты обязательны: без них compose не стартует (${VAR:?}).
-name: standup-prod
+name: standup_calendar
 
 x-logging: &logging
   driver: json-file
