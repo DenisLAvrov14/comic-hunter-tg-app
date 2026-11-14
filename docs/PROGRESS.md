@@ -233,3 +233,11 @@
 - Бот в режиме webhook с настоящим токеном и выпуск сертификата Let's Encrypt — нужен домен и сервер.
 - `deploy/backup.sh` не запускался (на Windows/Podman нет `docker compose`) — проверить на сервере вместе с восстановлением.
 - Для разработки нужен отдельный тестовый бот: polling на боевом токене снимет вебхук.
+
+### Боевой сервер, 14 ноября
+
+- VPS в Астане (1 vCPU, 2 ГБ, 25 ГБ), Ubuntu 24.04: Docker, swap 2 ГБ, ufw (22/80/443), SSH только по ключу, fail2ban. IPv6 у хостинга не работает — apt и getaddrinfo принудительно на IPv4.
+- Код в `/opt/standup_calendar` (git clone `main`), секреты сгенерированы на сервере в `.env` (не в репозитории).
+- Временный адрес `https://89-35-124-249.sslip.io` (Let's Encrypt), бот `@standup_calendar_bot`, Mini App `t.me/standup_calendar_bot/app`. Переезд на свой домен: `DOMAIN` в `.env`, URL Mini App в @BotFather, `up -d` (вебхук перерегистрируется сам); подписки на календарь со старым адресом перестанут обновляться.
+- Бэкапы — cron 03:30 UTC в `/var/backups/standup_calendar`, первый прогон и `pg_restore --list` проверены. Копии пока только на этом же сервере.
+- Исправлено по ходу: healthcheck API — `127.0.0.1` (в Alpine `localhost` → `::1`), почта Let's Encrypt необязательна.
