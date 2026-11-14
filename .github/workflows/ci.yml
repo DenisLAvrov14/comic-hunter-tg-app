@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: standup
+          POSTGRES_PASSWORD: standup
+          POSTGRES_DB: standup
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U standup" --health-interval 2s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://standup:standup@localhost:5432/standup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target node-app -t standup-calendar-node:ci .
+      - run: docker build --target miniapp -t standup-calendar-miniapp:ci .
