@@ -92,7 +92,7 @@ services:
       migrate: { condition: service_completed_successfully }
       minio: { condition: service_started }
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/health']
       interval: 10s
       timeout: 3s
       retries: 10
