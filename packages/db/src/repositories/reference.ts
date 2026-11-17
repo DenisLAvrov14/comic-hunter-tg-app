@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, inArray, or } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { Db } from '../client';
 import type { DbOrTx } from './events';
 import { CITIES } from '../data/cities';
@@ -67,7 +67,8 @@ export async function listVenuesByCity(
         or(eq(venues.status, 'approved'), eq(venues.createdBy, viewerId)),
       ),
     )
-    .orderBy(asc(venues.name));
+    // Сначала площадки с приоритетом (CENTRAL, PUNCH в Алматы), остальные — по алфавиту.
+    .orderBy(sql`${venues.priority} asc nulls last`, asc(venues.name));
   return rows.map(({ venue, userId, deletedAt, firstName, ...owner }) => ({
     venue,
     owner: userId && firstName !== null && !deletedAt ? { firstName, ...owner } : null,
@@ -115,7 +116,7 @@ export async function updateVenueImages(
 export async function updateVenueInfo(
   db: DbOrTx,
   id: string,
-  patch: { capacity?: number | null; kind?: Venue['kind']; website?: string | null },
+  patch: Partial<Pick<Venue, 'capacity' | 'halls' | 'kind' | 'website' | 'priority'>>,
 ): Promise<Venue> {
   const [row] = await db.update(venues).set(patch).where(eq(venues.id, id)).returning();
   return row!;
@@ -130,6 +131,7 @@ export async function createVenue(
     timezone: string;
     createdBy: string;
     capacity?: number | null;
+    halls?: Venue['halls'];
     kind?: Venue['kind'];
     website?: string | null;
     /** По умолчанию — на проверке; сиды создают сразу проверенные. */

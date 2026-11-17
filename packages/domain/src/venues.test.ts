@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeHalls,
   normalizeWebsite,
   catalogVenuePatch,
   adminChangeError,
@@ -198,6 +199,8 @@ describe('catalogVenuePatch', () => {
     kind: null,
     capacity: null,
     website: null,
+    halls: null,
+    priority: null,
   };
 
   it('площадку из каталога приводит к каталогу', () => {
@@ -219,11 +222,39 @@ describe('catalogVenuePatch', () => {
     );
   });
 
+  it('залы и приоритет из каталога', () => {
+    const halls = [
+      { name: 'Нижний зал', capacity: 140 },
+      { name: 'Верхний зал', capacity: 200 },
+    ];
+    expect(
+      catalogVenuePatch(
+        {
+          ...old,
+          name: 'PUNCH',
+          address: item.address,
+          kind: 'club',
+          capacity: 80,
+          createdBy: null,
+        },
+        { ...item, capacity: 340, halls, priority: 1 },
+      ),
+    ).toEqual({ capacity: 340, halls, priority: 1 });
+  });
+
   it('уже совпадает — менять нечего; без мест в каталоге места не стираются', () => {
-    expect(catalogVenuePatch({ ...item, website: null, createdBy: null }, item)).toEqual({});
+    expect(
+      catalogVenuePatch(
+        { ...item, website: null, halls: null, priority: null, createdBy: null },
+        item,
+      ),
+    ).toEqual({});
     const noCapacity = { name: item.name, address: item.address, kind: item.kind };
     expect(
-      catalogVenuePatch({ ...item, capacity: 90, website: null, createdBy: null }, noCapacity),
+      catalogVenuePatch(
+        { ...item, capacity: 90, website: null, halls: null, priority: null, createdBy: null },
+        noCapacity,
+      ),
     ).toEqual({});
   });
 });
@@ -240,5 +271,50 @@ describe('normalizeWebsite', () => {
     expect(normalizeWebsite('javascript:alert(1)')).toBeUndefined();
     expect(normalizeWebsite('ftp://site.kz')).toBeUndefined();
     expect(normalizeWebsite('my site.kz')).toBeUndefined();
+  });
+});
+
+describe('normalizeHalls', () => {
+  it('один зал — просто число мест', () => {
+    expect(normalizeHalls([{ name: '', capacity: 80 }])).toEqual({
+      ok: true,
+      halls: null,
+      capacity: 80,
+    });
+  });
+
+  it('несколько залов — с названиями, места суммируются', () => {
+    expect(
+      normalizeHalls([
+        { name: ' Нижний зал ', capacity: 140 },
+        { name: 'Верхний зал', capacity: 200 },
+      ]),
+    ).toEqual({
+      ok: true,
+      halls: [
+        { name: 'Нижний зал', capacity: 140 },
+        { name: 'Верхний зал', capacity: 200 },
+      ],
+      capacity: 340,
+    });
+  });
+
+  it('ошибки: нет залов, без названия, повтор, слишком много', () => {
+    expect(normalizeHalls([])).toEqual({ ok: false, error: 'empty' });
+    expect(
+      normalizeHalls([
+        { name: 'А', capacity: 1 },
+        { name: '', capacity: 2 },
+      ]),
+    ).toEqual({ ok: false, error: 'names' });
+    expect(
+      normalizeHalls([
+        { name: 'Зал', capacity: 1 },
+        { name: 'зал', capacity: 2 },
+      ]),
+    ).toEqual({ ok: false, error: 'duplicate' });
+    expect(
+      normalizeHalls(Array.from({ length: 6 }, (_, i) => ({ name: `${i}`, capacity: 1 }))),
+    ).toEqual({ ok: false, error: 'too_many' });
   });
 });

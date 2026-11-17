@@ -1680,6 +1680,7 @@ button.lightbox-arrow {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 2px;
   min-width: 0;
   min-height: 0;
@@ -1866,10 +1867,67 @@ button.venue-stat .venue-stat-value {
 }
 
 button.venue-card-more {
-  align-self: center;
-  padding: 2px 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 0;
   font-size: 14px;
   color: var(--hint);
+}
+
+/* «На карте» — одна кнопка той же высоты, что и «Мест»: иконка и подпись по центру. */
+button.venue-stat-map {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--link);
+}
+
+.venue-stat-map svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Низ карточки: владелец слева, «Подробнее» справа — одной строкой. */
+.venue-card-footer {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  margin-top: -2px;
+  padding: 0 4px;
+}
+
+.venue-card-footer .venue-card-meta {
+  min-width: 0;
+  font-size: 14px;
+}
+
+/* Зал в форме: название, места и «убрать» в одну строку, поля на одной линии. */
+.hall-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 44px;
+  gap: 8px;
+  align-items: end;
+}
+
+/* Подписи — только над первой строкой; у остальных пустая подпись не занимает места. */
+.hall-row + .hall-row label > span:first-child:empty {
+  display: none;
+}
+
+.hall-row .icon-button {
+  width: 44px;
+  height: 44px;
 }
 
 /* Одна строка под шапкой карточки: кто добавил площадку. */

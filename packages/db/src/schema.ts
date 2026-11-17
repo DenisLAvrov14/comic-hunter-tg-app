@@ -175,8 +175,12 @@ export const venues = pgTable(
     lng: doublePrecision('lng'),
     // Лого (квадрат); фото площадки — в venue_photos.
     logoS3Key: text('logo_s3_key'),
-    // Мест в зале; null — не указано.
+    // Мест на площадке; null — не указано. При нескольких залах — их сумма.
     capacity: integer('capacity'),
+    // Залы, если их несколько (название и места); null — один зал.
+    halls: jsonb('halls').$type<Array<{ name: string; capacity: number }>>(),
+    // Порядок в списке города: меньше — выше; null — после них, по алфавиту.
+    priority: integer('priority'),
     // Тип площадки; null — у площадок, добавленных до появления поля.
     kind: venueKindEnum('kind'),
     // Сайт площадки (необязательно), полный URL.

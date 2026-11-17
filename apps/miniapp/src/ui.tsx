@@ -152,7 +152,7 @@ function regionCities(cities: City[], region: Region, selected: number | null) {
 const rank = (names: readonly string[], name: string) =>
   names.includes(name) ? names.indexOf(name) : names.length;
 
-/** Выбор города, сгруппированный по регионам: Россия, Центральная Азия, Европа. */
+/** Выбор города, сгруппированный по регионам: Центральная Азия, Россия, Европа. */
 export function CitySelect({
   value,
   onChange,

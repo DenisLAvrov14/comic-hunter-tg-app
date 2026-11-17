@@ -90,6 +90,98 @@ function VenueList({ cityId }: { cityId: number }) {
   );
 }
 
+type HallRow = { name: string; capacity: string };
+const oneHall = (capacity = ''): HallRow[] => [{ name: '', capacity }];
+
+/** Строки залов площадки для правки: несколько залов — каждый, иначе одно число мест. */
+function hallRows(venue: Venue): HallRow[] {
+  if (venue.halls.length > 1) {
+    return venue.halls.map((h) => ({ name: h.name, capacity: String(h.capacity) }));
+  }
+  return oneHall(venue.capacity ? String(venue.capacity) : '');
+}
+
+/** Залы из формы → тело запроса: один зал — capacity, несколько — halls. Ошибка — текстом. */
+function hallsPayload(
+  rows: HallRow[],
+): { capacity: number } | { halls: Array<{ name: string; capacity: number }> } {
+  const numbers = rows.map((r) => parseCapacity(r.capacity));
+  if (numbers.some((n) => n === undefined)) throw new Error(v.capacityInvalid);
+  if (rows.length === 1) return { capacity: numbers[0]! };
+  if (rows.some((r) => !r.name.trim())) throw new Error(v.hallNamesRequired);
+  return { halls: rows.map((r, i) => ({ name: r.name.trim(), capacity: numbers[i]! })) };
+}
+
+/**
+ * Места площадки: одно поле «Мест в зале»; «+ Ещё зал» — несколько залов, у каждого
+ * название и места (у CENTRAL, например, нижний и верхний).
+ */
+function HallsEditor({
+  rows,
+  onChange,
+  invalid,
+}: {
+  rows: HallRow[];
+  onChange: (rows: HallRow[]) => void;
+  invalid?: boolean;
+}) {
+  const set = (i: number, patch: Partial<HallRow>) =>
+    onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="field-group">
+      {rows.length === 1 ? (
+        <TextField
+          label={v.capacityField}
+          value={rows[0]!.capacity}
+          onChange={(capacity) => set(0, { capacity })}
+          inputMode="numeric"
+          hint={v.capacityHint}
+          invalid={invalid}
+        />
+      ) : (
+        <>
+          <span className="field-label">{v.halls}</span>
+          {rows.map((r, i) => (
+            <div key={i} className="hall-row">
+              <TextField
+                label={i === 0 ? v.hallName : ''}
+                value={r.name}
+                placeholder={v.hallNamePlaceholders[i] ?? v.hallName}
+                onChange={(name) => set(i, { name })}
+                invalid={invalid && !r.name.trim()}
+              />
+              <TextField
+                label={i === 0 ? v.capacity : ''}
+                value={r.capacity}
+                onChange={(capacity) => set(i, { capacity })}
+                inputMode="numeric"
+                invalid={invalid && !r.capacity.trim()}
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={v.removeHall}
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+      {rows.length < 5 && (
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => onChange([...rows, { name: '', capacity: '' }])}
+        >
+          {v.addHall}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Строка поля «Мест в зале» → число или undefined (пусто или не число). */
 function parseCapacity(value: string): number | undefined {
   const text = value.replace(/\s/g, '');
@@ -141,11 +233,11 @@ function OwnVenueCard({
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
+  const [rows, setRows] = useState<HallRow[]>(oneHall());
   const [kind, setKind] = useState<VenueKind | null>(venue.kind);
   const [website, setWebsite] = useState('');
   const startEdit = () => {
-    setValue(venue.capacity ? String(venue.capacity) : '');
+    setRows(hallRows(venue));
     setKind(venue.kind);
     setWebsite(venue.website ?? '');
     save.reset();
@@ -161,10 +253,8 @@ function OwnVenueCard({
   });
   const save = useMutation({
     mutationFn: async () => {
-      const capacity = parseCapacity(value);
-      if (capacity === undefined) throw new Error(v.capacityInvalid);
       return api.patchVenue(venue.id, {
-        capacity,
+        ...hallsPayload(rows),
         website: website.trim() || null,
         ...(kind ? { kind } : {}),
       });
@@ -200,13 +290,7 @@ function OwnVenueCard({
       {editing && (
         <div className="stack">
           <KindPicker value={kind} onChange={setKind} />
-          <TextField
-            label={v.capacityField}
-            value={value}
-            onChange={setValue}
-            inputMode="numeric"
-            hint={v.capacityHint}
-          />
+          <HallsEditor rows={rows} onChange={setRows} />
           <TextField
             label={v.website}
             value={website}
@@ -440,7 +524,7 @@ function NewVenue({ cityId }: { cityId: number }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
-  const [capacity, setCapacity] = useState('');
+  const [rows, setRows] = useState<HallRow[]>(oneHall());
   const [kind, setKind] = useState<VenueKind | null>(null);
   const [website, setWebsite] = useState('');
   const [logo, setLogo] = useState<File | null>(null);
@@ -452,13 +536,12 @@ function NewVenue({ cityId }: { cityId: number }) {
       for (const f of [logo, photo]) {
         if (f && f.size > PHOTO_MAX_BYTES) throw new Error(v.tooLarge);
       }
-      const seats = parseCapacity(capacity);
-      if (seats === undefined) throw new Error(v.capacityInvalid);
+      const seats = hallsPayload(rows);
       const venue = await api.createVenue({
         name: name.trim(),
         address: address.trim(),
         cityId,
-        capacity: seats,
+        ...seats,
         kind: kind!,
         website: website.trim() || null,
       });
@@ -472,7 +555,7 @@ function NewVenue({ cityId }: { cityId: number }) {
       required.reset();
       setName('');
       setAddress('');
-      setCapacity('');
+      setRows(oneHall());
       setKind(null);
       setWebsite('');
       setLogo(null);
@@ -487,7 +570,7 @@ function NewVenue({ cityId }: { cityId: number }) {
     [t.fields.venueName, name.trim() !== ''],
     [t.fields.address, address.trim() !== ''],
     [v.kind, kind !== null],
-    [v.capacityField, capacity.trim() !== ''],
+    [v.capacityField, rows.every((r) => r.capacity.trim() !== '')],
   ]);
   const change =
     <T,>(set: (value: T) => void) =>
@@ -511,12 +594,9 @@ function NewVenue({ cityId }: { cityId: number }) {
         onChange={change(setAddress)}
       />
       <KindPicker value={kind} onChange={change(setKind)} invalid={required.isMissing(v.kind)} />
-      <TextField
-        label={v.capacityField}
-        value={capacity}
-        onChange={change(setCapacity)}
-        inputMode="numeric"
-        hint={v.capacityHint}
+      <HallsEditor
+        rows={rows}
+        onChange={change(setRows)}
         invalid={required.isMissing(v.capacityField)}
       />
       <TextField

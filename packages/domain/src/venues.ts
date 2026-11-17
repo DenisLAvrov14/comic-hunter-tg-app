@@ -164,6 +164,8 @@ export interface CatalogVenueFields<K extends string = string> {
   kind: K | null;
   capacity: number | null;
   website: string | null;
+  halls: VenueHall[] | null;
+  priority: number | null;
 }
 
 /**
@@ -173,7 +175,15 @@ export interface CatalogVenueFields<K extends string = string> {
  */
 export function catalogVenuePatch<K extends string>(
   existing: CatalogVenueFields<K> & { createdBy: string | null },
-  item: { name: string; address: string; kind: K; capacity?: number; website?: string },
+  item: {
+    name: string;
+    address: string;
+    kind: K;
+    capacity?: number;
+    website?: string;
+    halls?: VenueHall[];
+    priority?: number;
+  },
 ): Partial<CatalogVenueFields<K>> {
   const target: CatalogVenueFields<K> =
     existing.createdBy === null
@@ -183,6 +193,8 @@ export function catalogVenuePatch<K extends string>(
           kind: item.kind,
           capacity: item.capacity ?? existing.capacity,
           website: item.website ?? existing.website,
+          halls: item.halls ?? existing.halls,
+          priority: item.priority ?? existing.priority,
         }
       : {
           name: existing.name,
@@ -190,10 +202,15 @@ export function catalogVenuePatch<K extends string>(
           kind: existing.kind ?? item.kind,
           capacity: existing.capacity ?? item.capacity ?? null,
           website: existing.website ?? item.website ?? null,
+          halls: existing.capacity === null ? (item.halls ?? null) : existing.halls,
+          priority: existing.priority ?? item.priority ?? null,
         };
+  const keys = ['name', 'address', 'kind', 'capacity', 'website', 'halls', 'priority'] as const;
   const patch: Partial<CatalogVenueFields<K>> = {};
-  for (const key of ['name', 'address', 'kind', 'capacity', 'website'] as const) {
-    if (target[key] !== existing[key]) Object.assign(patch, { [key]: target[key] });
+  for (const key of keys) {
+    if (JSON.stringify(target[key]) !== JSON.stringify(existing[key])) {
+      Object.assign(patch, { [key]: target[key] });
+    }
   }
   return patch;
 }
@@ -215,4 +232,32 @@ export function normalizeWebsite(value: string): string | null | undefined {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
   if (!url.hostname.includes('.') || /\s/.test(text)) return undefined;
   return url.href.replace(/\/$/, '');
+}
+
+export interface VenueHall {
+  name: string;
+  capacity: number;
+}
+
+export const VENUE_HALLS_MAX = 5;
+
+export type VenueHallsResult =
+  | { ok: true; halls: VenueHall[] | null; capacity: number }
+  | { ok: false; error: 'empty' | 'too_many' | 'names' | 'duplicate' };
+
+/**
+ * Залы из формы. Один зал — просто число мест (halls = null). Несколько — у каждого
+ * название (без повторов), а места площадки — их сумма. Числа мест проверяет схема запроса.
+ */
+export function normalizeHalls(
+  input: ReadonlyArray<{ name?: string | null; capacity: number }>,
+): VenueHallsResult {
+  if (input.length === 0) return { ok: false, error: 'empty' };
+  if (input.length > VENUE_HALLS_MAX) return { ok: false, error: 'too_many' };
+  if (input.length === 1) return { ok: true, halls: null, capacity: input[0]!.capacity };
+  const halls = input.map((h) => ({ name: (h.name ?? '').trim(), capacity: h.capacity }));
+  if (halls.some((h) => !h.name)) return { ok: false, error: 'names' };
+  const names = new Set(halls.map((h) => h.name.toLowerCase()));
+  if (names.size !== halls.length) return { ok: false, error: 'duplicate' };
+  return { ok: true, halls, capacity: halls.reduce((sum, h) => sum + h.capacity, 0) };
 }

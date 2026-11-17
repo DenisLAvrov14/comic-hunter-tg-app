@@ -90,10 +90,23 @@ function Stat({
   );
 }
 
-/**
- * Карточка площадки. Шапка — фото на всю её высоту слева; справа название, город, адрес
- * и две плашки: «Мест» и «На карте». Ниже — статус проверки, плитки и доп. содержимое.
- */
+/** «140+»: места всегда с плюсом — сколько вмещает зал, бывает и больше. */
+export const seats = (n: number) => `${n}+`;
+
+/** Плашка «Мест»: всего мест; при нескольких залах подпись «2 зала», каждый — в «Подробнее». */
+function capacityStat(venue: Venue, editable: boolean) {
+  if (venue.halls.length > 1) {
+    return {
+      label: v.hallsCount(venue.halls.length),
+      value: seats(venue.capacity ?? 0),
+    };
+  }
+  return {
+    label: v.capacity,
+    value: venue.capacity ? seats(venue.capacity) : editable ? v.setCapacity : '—',
+  };
+}
+
 /** Афиша: ближайшие события площадки; нажатие — открыть событие. */
 function AfishaPanel({ afisha, timezone }: { afisha: VenueListItem['afisha']; timezone: string }) {
   const navigate = useNavigate();
@@ -260,6 +273,10 @@ function Gallery({
   );
 }
 
+/**
+ * Карточка площадки. Шапка — слайдер фото на всю её высоту слева; справа название, город,
+ * адрес и две плашки: «Мест» и «На карте». Ниже — афиша, статус, плитки и «Подробнее».
+ */
 export function VenueCard({
   venue,
   cityName,
@@ -338,18 +355,15 @@ export function VenueCard({
             <span>{venue.address}</span>
           </span>
           <div className="venue-stats">
-            <Stat
-              icon="seat"
-              label={v.capacity}
-              value={venue.capacity ? String(venue.capacity) : onCapacity ? v.setCapacity : '—'}
-              onClick={onCapacity}
-            />
-            <Stat
-              icon="map"
-              label={v.onMap}
-              value={v.openMap}
+            <Stat icon="seat" {...capacityStat(venue, !!onCapacity)} onClick={onCapacity} />
+            <button
+              type="button"
+              className="venue-stat venue-stat-map"
               onClick={() => openExternal(venueMapUrl(cityName, venue))}
-            />
+            >
+              <VenueIconSvg name="map" />
+              {v.onMap}
+            </button>
           </div>
         </div>
       </div>
@@ -357,8 +371,6 @@ export function VenueCard({
       {afisha && venue.status === 'approved' && (
         <AfishaPanel afisha={afisha} timezone={venue.timezone} />
       )}
-
-      {owner && !venue.canEdit && <OwnerLine owner={owner} />}
 
       {showStatus && status && (
         <div className={status === 'rejected' ? 'venue-card-panel danger' : 'venue-card-panel'}>
@@ -374,6 +386,13 @@ export function VenueCard({
 
       {open && (
         <div className="venue-card-details">
+          {venue.halls.length > 1 &&
+            venue.halls.map((h) => (
+              <div key={h.name} className="venue-card-detail">
+                <span className="hint">{h.name}</span>
+                <span>{v.hallSeats(h.capacity)}</span>
+              </div>
+            ))}
           <div className="venue-card-detail">
             <span className="hint">{v.website}</span>
             {venue.website ? (
@@ -400,14 +419,17 @@ export function VenueCard({
       {viewer && (
         <Lightbox images={viewer.images} start={viewer.start} onClose={() => setViewer(null)} />
       )}
-      <button
-        type="button"
-        className="link-button venue-card-more"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        {open ? `${v.less} ▴` : `${v.more} ▾`}
-      </button>
+      <div className="venue-card-footer">
+        {owner && !venue.canEdit ? <OwnerLine owner={owner} /> : <span />}
+        <button
+          type="button"
+          className="link-button venue-card-more"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? `${v.less} ▴` : `${v.more} ▾`}
+        </button>
+      </div>
     </section>
   );
 }

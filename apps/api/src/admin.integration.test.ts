@@ -208,6 +208,32 @@ describe.skipIf(!TEST_DATABASE_URL)('API админка (Postgres)', () => {
     expect((cleared.json() as Venue).website).toBeNull();
   });
 
+  it('несколько залов: у каждого название, места площадки — сумма', async () => {
+    const body = { kind: 'club', name: `Два зала ${base}`, address: 'ул. 4', cityId: moscow };
+    const bad = await org.call('POST', '/venues', {
+      ...body,
+      halls: [{ name: 'Нижний', capacity: 140 }, { capacity: 200 }],
+    });
+    expect(bad.statusCode).toBe(400);
+    const res = await org.call('POST', '/venues', {
+      ...body,
+      halls: [
+        { name: 'Нижний', capacity: 140 },
+        { name: 'Верхний', capacity: 200 },
+      ],
+    });
+    expect(res.json()).toMatchObject({
+      capacity: 340,
+      halls: [
+        { name: 'Нижний', capacity: 140 },
+        { name: 'Верхний', capacity: 200 },
+      ],
+    });
+    // Один зал — снова просто места.
+    const one = await org.call('PATCH', `/venues/${(res.json() as Venue).id}`, { capacity: 90 });
+    expect(one.json()).toMatchObject({ capacity: 90, halls: [] });
+  });
+
   it('админ назначает владельца площадки — тот может её менять', async () => {
     const venue = await addVenue(org, `Чужая ${base}`);
     expect((await other.call('PATCH', `/venues/${venue.id}`, { capacity: 5 })).statusCode).toBe(

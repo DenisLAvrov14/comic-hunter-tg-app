@@ -9,8 +9,12 @@ export interface VenueCatalogItem {
   name: string;
   address: string;
   kind: NonNullable<Venue['kind']>;
-  /** Мест в зале. */
+  /** Мест, если зал один. */
   capacity?: number;
+  /** Залы, если их несколько: места площадки — их сумма. */
+  halls?: Array<{ name: string; capacity: number }>;
+  /** Порядок в списке города (меньше — выше). */
+  priority?: number;
   /** Сайт площадки (полный URL). */
   website?: string;
   /** Прежние названия — чтобы найти уже загруженную площадку после переименования. */
@@ -27,13 +31,16 @@ export function venueImagePath(file: string): string {
 
 export const venueCatalog: VenueCatalogItem[] = [
   // Алматы: CENTRAL, PUNCH и бары Standup Camp — данные от площадок (ноябрь 2026).
-  // У CENTRAL два зала: нижний на 140 и верхний на 200+ мест — указан больший.
   {
     city: 'Алматы',
     name: 'CENTRAL',
     address: 'ул. Кабанбай батыра, 71',
     kind: 'club',
-    capacity: 200,
+    halls: [
+      { name: 'Нижний зал', capacity: 140 },
+      { name: 'Верхний зал', capacity: 200 },
+    ],
+    priority: 1,
     website: 'https://www.standupclub.kz',
     aliases: ['Almaty Central Stand up Club'],
     logo: 'almaty-central-logo.jpg',
@@ -45,6 +52,7 @@ export const venueCatalog: VenueCatalogItem[] = [
     address: 'ул. Каирбекова, 35а',
     kind: 'club',
     capacity: 80,
+    priority: 2,
     website: 'https://punchclub.kz',
     aliases: ['Punch StandUp Club'],
     logo: 'almaty-punch-logo.jpg',

@@ -120,6 +120,13 @@
       "when": 1794925327268,
       "tag": "0016_smart_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794935489431,
+      "tag": "0017_chemical_true_believers",
+      "breakpoints": true
     }
   ]
 }

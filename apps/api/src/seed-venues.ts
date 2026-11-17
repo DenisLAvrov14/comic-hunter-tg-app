@@ -110,6 +110,8 @@ for (const item of venueCatalog) {
     .where(byNames(city.id, names))
     .orderBy(sql`${venues.createdBy} is not null`);
   let venue = found[0];
+  // Несколько залов — места площадки равны их сумме.
+  const capacity = item.halls ? item.halls.reduce((sum, h) => sum + h.capacity, 0) : item.capacity;
   if (!venue) {
     [venue] = await db
       .insert(venues)
@@ -119,14 +121,16 @@ for (const item of venueCatalog) {
         cityId: city.id,
         timezone: city.timezone,
         kind: item.kind,
-        capacity: item.capacity ?? null,
+        capacity: capacity ?? null,
+        halls: item.halls ?? null,
+        priority: item.priority ?? null,
         website: item.website ?? null,
         status: 'approved',
       })
       .returning();
     stats.added += 1;
   } else {
-    const patch = catalogVenuePatch(venue, item);
+    const patch = catalogVenuePatch(venue, { ...item, capacity });
     if (Object.keys(patch).length) {
       [venue] = await db.update(venues).set(patch).where(eq(venues.id, venue.id)).returning();
       stats.updated += 1;

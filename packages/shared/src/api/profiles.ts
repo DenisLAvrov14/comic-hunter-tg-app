@@ -39,8 +39,8 @@ export const countries = [
 export const Country = z.enum(countries);
 export type Country = z.infer<typeof Country>;
 
-/** Регионы, по которым сгруппированы города в списках: Россия, Центральная Азия, Европа. */
-export const regions = ['RU', 'CA', 'EU'] as const;
+/** Регионы, по которым сгруппированы города в списках, по порядку: Центральная Азия, Россия, Европа. */
+export const regions = ['CA', 'RU', 'EU'] as const;
 export type Region = (typeof regions)[number];
 
 const centralAsia: readonly Country[] = ['KZ', 'UZ', 'KG', 'TJ'];
@@ -228,8 +228,10 @@ export const Venue = z.object({
   photos: z.array(z.object({ id: z.string().uuid(), url: z.string(), previewUrl: z.string() })),
   /** Менять лого и фото может тот, кто добавил площадку. */
   canEdit: z.boolean(),
-  /** Мест в зале; null — не указано. */
+  /** Мест на площадке; null — не указано. При нескольких залах — сумма. */
   capacity: z.number().int().nullable(),
+  /** Залы, если их несколько; пусто — один зал. */
+  halls: z.array(z.object({ name: z.string(), capacity: z.number().int() })),
   /** Тип площадки; null — не указан (старые площадки). */
   kind: VenueKind.nullable(),
   /** Сайт площадки, полный URL; null — не указан. */
@@ -243,20 +245,33 @@ export type Venue = z.infer<typeof Venue>;
 
 export const VENUE_CAPACITY_MAX = 10_000;
 const capacity = z.number().int().min(1).max(VENUE_CAPACITY_MAX);
+/** Залы: один — просто места, несколько — у каждого название (проверяет normalizeHalls). */
+const halls = z
+  .array(z.object({ name: z.string().trim().max(60).nullable().optional(), capacity }))
+  .min(1)
+  .max(5);
 
-export const VenueInput = z.object({
-  name: text(100),
-  address: text(200),
-  cityId: z.number().int().positive(),
-  capacity,
-  kind: VenueKind,
-  /** Сайт — по желанию; без https:// — добавится. */
-  website: z.string().trim().max(300).nullable().optional(),
-});
+export const VenueInput = z
+  .object({
+    name: text(100),
+    address: text(200),
+    cityId: z.number().int().positive(),
+    /** Мест — если зал один; иначе halls. */
+    capacity: capacity.optional(),
+    halls: halls.optional(),
+    kind: VenueKind,
+    /** Сайт — по желанию; без https:// — добавится. */
+    website: z.string().trim().max(300).nullable().optional(),
+  })
+  .refine((v) => v.capacity !== undefined || v.halls !== undefined, {
+    message: 'Укажите, сколько мест',
+    path: ['capacity'],
+  });
 export type VenueInput = z.infer<typeof VenueInput>;
 
 export const VenuePatch = z.object({
   capacity: capacity.optional(),
+  halls: halls.optional(),
   kind: VenueKind.optional(),
   website: z.string().trim().max(300).nullable().optional(),
 });

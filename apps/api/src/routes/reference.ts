@@ -21,7 +21,7 @@ import {
   type Venue as VenueRow,
   type VenuePhoto,
 } from '@standup/db';
-import { groupAfisha, normalizeWebsite } from '@standup/domain';
+import { groupAfisha, normalizeHalls, normalizeWebsite, type VenueHall } from '@standup/domain';
 import {
   PHOTO_LIMIT,
   VenueInput,
@@ -57,6 +57,7 @@ export function toVenue(
     })),
     canEdit: v.createdBy === userId,
     capacity: v.capacity,
+    halls: v.halls ?? [],
     kind: v.kind,
     website: v.website,
     status: v.status,
@@ -92,6 +93,29 @@ function websiteField(value: string | null | undefined): string | null | undefin
     throw new ApiError('VALIDATION', 'Не похоже на адрес сайта', { field: 'website' });
   }
   return website;
+}
+
+const hallErrors = {
+  empty: 'Добавьте хотя бы один зал',
+  too_many: 'Не больше 5 залов',
+  names: 'Если залов несколько, у каждого нужно название',
+  duplicate: 'Названия залов повторяются',
+} as const;
+
+/** Места из запроса: один зал — число, несколько — залы и их сумма; undefined — не меняли. */
+function seatsField(body: {
+  capacity?: number;
+  halls?: Array<{ name?: string | null; capacity: number }>;
+}): { capacity: number; halls: VenueHall[] | null } | undefined {
+  if (body.halls) {
+    const result = normalizeHalls(body.halls);
+    if (!result.ok) {
+      throw new ApiError('VALIDATION', hallErrors[result.error], { field: 'halls' });
+    }
+    return { capacity: result.capacity, halls: result.halls };
+  }
+  if (body.capacity !== undefined) return { capacity: body.capacity, halls: null };
+  return undefined;
 }
 
 export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = async (
@@ -150,10 +174,15 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     const city = await findCity(db, body.cityId);
     if (!city) throw new ApiError('VALIDATION', 'Город не найден', { field: 'cityId' });
     const website = websiteField(body.website) ?? null;
+    const seats = seatsField(body)!;
     // Любая новая площадка — на проверку, в том числе от админа (он видит её в очереди сам).
     const venue = await db.transaction(async (tx) => {
       const created = await createVenue(tx, {
-        ...body,
+        name: body.name,
+        address: body.address,
+        cityId: body.cityId,
+        kind: body.kind,
+        ...seats,
         website,
         timezone: city.timezone,
         createdBy: req.user.sub,
@@ -186,14 +215,15 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
 
   app.patch('/venues/:id', async (req): Promise<Venue> => {
     const { id } = VenueParams.parse(req.params);
-    const { website, ...patch } = VenuePatch.parse(req.body);
-    await editableVenue(id, req.user.sub);
-    const normalized = websiteField(website);
-    const updated = await updateVenueInfo(
-      db,
-      id,
-      normalized === undefined ? patch : { ...patch, website: normalized },
-    );
+    const body = VenuePatch.parse(req.body);
+    const venue = await editableVenue(id, req.user.sub);
+    const website = websiteField(body.website);
+    const patch = {
+      ...(body.kind ? { kind: body.kind } : {}),
+      ...seatsField(body),
+      ...(website === undefined ? {} : { website }),
+    };
+    const updated = Object.keys(patch).length ? await updateVenueInfo(db, id, patch) : venue;
     return withPhotos(updated, req.user.sub);
   });
 
