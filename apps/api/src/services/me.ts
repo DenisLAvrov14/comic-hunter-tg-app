@@ -76,5 +76,7 @@ export async function loadMe(db: Db, storage: FileStorage, userOrId: User | stri
         hasComedianProfile: !!comedian,
         hasOrganizerProfile: !!organizer,
       }) === 'done',
+    isAdmin: user.isAdmin,
+    canManageAdmins: user.isAdmin && user.canManageAdmins,
   };
 }

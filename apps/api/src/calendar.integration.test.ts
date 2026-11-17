@@ -30,6 +30,8 @@ describe.skipIf(!TEST_DATABASE_URL)('Календарь и автопринят�
     });
     const venue = (
       await u.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
         name: `Зал ${name} ${base}`,
         address: 'ул. 1',
         cityId: moscow,

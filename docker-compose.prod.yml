@@ -79,6 +79,8 @@ services:
       <<: *node-env
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET}
       DEV_AUTH: 'false'
+      # Telegram ID первых админов через запятую; остальных назначают в приложении.
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
       PUBLIC_BASE_URL: https://${DOMAIN:?задайте DOMAIN}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_REGION: ${S3_REGION:-us-east-1}

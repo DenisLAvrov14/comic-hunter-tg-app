@@ -71,3 +71,18 @@ export function todayLocal(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+/** День события относительно «сейчас» в таймзоне площадки: «сегодня», «завтра», «22.01». */
+export function dayLabel(
+  iso: string,
+  tz: string,
+  words: { today: string; tomorrow: string },
+  now = new Date(),
+): string {
+  const day = toLocalParts(iso, tz).date;
+  const today = toLocalParts(now.toISOString(), tz).date;
+  const tomorrow = toLocalParts(new Date(now.getTime() + 86_400_000).toISOString(), tz).date;
+  if (day === today) return words.today;
+  if (day === tomorrow) return words.tomorrow;
+  return fmt(tz, { day: '2-digit', month: '2-digit' }).format(new Date(iso));
+}

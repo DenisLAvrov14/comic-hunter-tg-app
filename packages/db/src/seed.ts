@@ -72,6 +72,7 @@ for (const v of venueSeeds) {
       cityId: c.id,
       timezone: c.timezone,
       createdBy: v.createdBy,
+      status: 'approved',
     });
   }
 }

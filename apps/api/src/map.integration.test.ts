@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { eq, schema } from '@standup/db';
 import {
   TEST_DATABASE_URL,
+  approveVenue,
   login,
   setupTestApp,
   telegramIdBase,
@@ -51,11 +52,14 @@ describe.skipIf(!TEST_DATABASE_URL)('API карта, счётчики, площ�
     });
     venueId = (
       await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
         name: `Подвал ${base}`,
         address: 'пр. Руставели, 1',
         cityId: cityId('Тбилиси'),
       })
     ).json().id;
+    await approveVenue(ctx.db, venueId);
 
     for (const [i, name] of ['А', 'Б'].entries()) {
       const c = await login(ctx.app, base + 1 + i, name);

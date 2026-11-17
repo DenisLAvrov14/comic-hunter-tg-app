@@ -6,6 +6,7 @@ import {
   mainButton,
   miniApp,
   openLink,
+  openTelegramLink,
   requestWriteAccess,
   retrieveLaunchParams,
   retrieveRawInitData,
@@ -102,6 +103,20 @@ export function openExternal(url: string) {
     }
   }
   window.location.href = url;
+}
+
+/** Профиль человека в Telegram (t.me/username): внутри Telegram — без закрытия Mini App. */
+export function openTelegramProfile(username: string) {
+  const url = `https://t.me/${encodeURIComponent(username)}`;
+  if (inTelegram && openTelegramLink.isAvailable()) {
+    try {
+      openTelegramLink(url);
+      return;
+    } catch {
+      // Клиент отказался — пробуем как обычную ссылку.
+    }
+  }
+  window.open(url, '_blank', 'noopener');
 }
 
 export function haptic(kind: 'light' | 'success' | 'error' = 'light') {

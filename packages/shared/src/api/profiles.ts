@@ -211,6 +211,11 @@ export const OrganizerProfile = z.object({
 });
 export type OrganizerProfile = z.infer<typeof OrganizerProfile>;
 
+/** Тип площадки: стендап-клуб, бар, концертный зал, другое. */
+export const venueKinds = ['club', 'bar', 'hall', 'other'] as const;
+export const VenueKind = z.enum(venueKinds);
+export type VenueKind = z.infer<typeof VenueKind>;
+
 export const Venue = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -223,15 +228,31 @@ export const Venue = z.object({
   photo: z.object({ url: z.string(), previewUrl: z.string() }).nullable(),
   /** Менять лого и фото может тот, кто добавил площадку. */
   canEdit: z.boolean(),
+  /** Мест в зале; null — не указано. */
+  capacity: z.number().int().nullable(),
+  /** Тип площадки; null — не указан (старые площадки). */
+  kind: VenueKind.nullable(),
+  /** На проверке и отклонённую видит только автор. */
+  status: z.enum(['pending', 'approved', 'rejected']),
+  /** Причина отказа — у отклонённой. */
+  rejectReason: z.string().nullable(),
 });
 export type Venue = z.infer<typeof Venue>;
+
+export const VENUE_CAPACITY_MAX = 10_000;
+const capacity = z.number().int().min(1).max(VENUE_CAPACITY_MAX);
 
 export const VenueInput = z.object({
   name: text(100),
   address: text(200),
   cityId: z.number().int().positive(),
+  capacity,
+  kind: VenueKind,
 });
 export type VenueInput = z.infer<typeof VenueInput>;
+
+export const VenuePatch = z.object({ capacity: capacity.optional(), kind: VenueKind.optional() });
+export type VenuePatch = z.infer<typeof VenuePatch>;
 
 export const VenuesQuery = z.object({
   city: z.coerce.number().int().positive(),

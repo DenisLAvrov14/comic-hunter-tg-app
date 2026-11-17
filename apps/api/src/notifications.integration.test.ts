@@ -82,7 +82,13 @@ describe.skipIf(!TEST_DATABASE_URL)('Уведомления (Postgres)', () => {
       .set({ botStarted: true })
       .where(eq(schema.users.id, org.userId));
     venueId = (
-      await org.call('POST', '/venues', { name: `Сцена ${base}`, address: 'ул. 7', cityId: moscow })
+      await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
+        name: `Сцена ${base}`,
+        address: 'ул. 7',
+        cityId: moscow,
+      })
     ).json().id;
   });
 

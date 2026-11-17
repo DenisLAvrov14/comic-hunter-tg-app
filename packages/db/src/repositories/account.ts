@@ -112,6 +112,8 @@ export async function anonymizeUser(
       languageCode: null,
       botStarted: false,
       botBlocked: true,
+      isAdmin: false,
+      canManageAdmins: false,
       deletedAt: now,
       updatedAt: now,
     })

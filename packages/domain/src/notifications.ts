@@ -27,6 +27,10 @@ export const notificationKinds = [
   'new_application',
   'broadcast',
   'host_invitation',
+  'venue_submitted',
+  'venue_approved',
+  'venue_rejected',
+  'admin_granted',
 ] as const;
 export type NotificationKind = (typeof notificationKinds)[number];
 

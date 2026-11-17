@@ -7,3 +7,4 @@ export * from './notifications';
 export * from './time';
 export * from './autoAccept';
 export * from './trips';
+export * from './venues';

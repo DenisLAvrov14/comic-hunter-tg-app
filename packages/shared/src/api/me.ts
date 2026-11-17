@@ -23,6 +23,10 @@ export const Me = z.object({
   organizerProfile: OrganizerProfile.nullable(),
   /** Пройдены ли обязательные шаги онбординга (роли + минимальные профили). */
   onboarded: z.boolean(),
+  /** Администратор: проверяет площадки. */
+  isAdmin: z.boolean(),
+  /** Может назначать и снимать админов. */
+  canManageAdmins: z.boolean(),
 });
 export type Me = z.infer<typeof Me>;
 

@@ -195,7 +195,7 @@ function EventBody({
             mine.status,
           ) && (
             <button
-              className="secondary danger-text"
+              className="danger"
               disabled={action.busy !== null}
               onClick={() => {
                 if (window.confirm(t.events.withdrawConfirm)) void action.run(mine.id, 'withdraw');
@@ -369,14 +369,14 @@ function InvitationCard({ item }: { item: InboxItem }) {
             {t.inbox.accept}
           </button>
           <button
-            className="outline danger-text"
+            className="danger"
             disabled={disabled}
             onClick={() => action.run(p.id, 'decline')}
           >
             {t.inbox.decline}
           </button>
           {p.status === 'invited' && (
-            <button className="outline" disabled={disabled} onClick={() => setCounter('')}>
+            <button className="secondary" disabled={disabled} onClick={() => setCounter('')}>
               {t.inbox.counterShort}
             </button>
           )}
@@ -402,7 +402,7 @@ function InvitationCard({ item }: { item: InboxItem }) {
             >
               {t.inbox.send}
             </button>
-            <button className="outline" onClick={() => setCounter(null)}>
+            <button className="secondary" onClick={() => setCounter(null)}>
               {t.back}
             </button>
           </div>

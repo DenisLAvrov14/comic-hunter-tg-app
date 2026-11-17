@@ -27,9 +27,12 @@ import {
   type Db,
   type Event,
   type Venue,
+  countPendingVenues,
 } from '@standup/db';
 import {
   can,
+  canSeeVenue,
+  canUseVenue,
   eventWindow,
   initialStatus,
   isActive,
@@ -103,6 +106,23 @@ export const eventRoutes: FastifyPluginAsync<{
   async function requireVenue(venueId: string): Promise<Venue> {
     const venue = await db.query.venues.findFirst({ where: (v, { eq }) => eq(v.id, venueId) });
     if (!venue) throw new ApiError('VALIDATION', 'Площадка не найдена', { field: 'venueId' });
+    return venue;
+  }
+
+  /**
+   * Площадка для события: проверенная или своя на проверке. Площадка, которая уже стоит
+   * в событии (`currentId`), остаётся при любом статусе.
+   */
+  async function requireUsableVenue(userId: string, venueId: string, currentId?: string) {
+    const venue = await requireVenue(venueId);
+    if (!canUseVenue(userId, venue, venueId === currentId)) {
+      if (canSeeVenue(userId, venue)) {
+        throw new ApiError('VALIDATION', 'Площадка отклонена администратором', {
+          field: 'venueId',
+        });
+      }
+      throw new ApiError('VALIDATION', 'Площадка не найдена', { field: 'venueId' });
+    }
     return venue;
   }
 
@@ -200,12 +220,18 @@ export const eventRoutes: FastifyPluginAsync<{
     }));
   });
 
-  app.get('/me/badges', async (req): Promise<Badges> => countBadges(db, req.user.sub, new Date()));
+  app.get('/me/badges', async (req): Promise<Badges> => {
+    const [counts, user] = await Promise.all([
+      countBadges(db, req.user.sub, new Date()),
+      findUserById(db, req.user.sub),
+    ]);
+    return { ...counts, admin: user?.isAdmin ? await countPendingVenues(db) : 0 };
+  });
 
   app.post('/events', async (req, reply): Promise<EventDetails> => {
     const body = EventInput.parse(req.body);
     await requireRole(req.user.sub, 'organizer');
-    const venue = await requireVenue(body.venueId);
+    const venue = await requireUsableVenue(req.user.sub, body.venueId);
     const { startsAt, endsAt } = timing(venue, body);
     const fields = {
       slotsCount: body.slotsCount,
@@ -258,7 +284,11 @@ export const eventRoutes: FastifyPluginAsync<{
       if (event.status === 'cancelled') {
         throw new ApiError('INVALID_TRANSITION', 'Событие отменено');
       }
-      const venue = await requireVenue(body.venueId ?? event.venueId);
+      const venue = await requireUsableVenue(
+        req.user.sub,
+        body.venueId ?? event.venueId,
+        event.venueId,
+      );
       const { startsAt, endsAt } = timing(venue, body, event);
       const slotsCount = body.slotsCount ?? event.slotsCount;
       const accepted = (
@@ -319,7 +349,7 @@ export const eventRoutes: FastifyPluginAsync<{
     const { id } = IdParams.parse(req.params);
     const body = DuplicateRequest.parse(req.body ?? {});
     const src = await eventFor(req.user.sub, id, 'event.edit');
-    const venue = await requireVenue(src.venueId);
+    const venue = await requireUsableVenue(req.user.sub, src.venueId);
     // По умолчанию — через неделю в то же местное время.
     const startsAt = body.startsAtLocal
       ? localToUtc(body.startsAtLocal, venue.timezone)

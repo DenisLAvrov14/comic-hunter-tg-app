@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { upsertTelegramUser, type Db } from '@standup/db';
+import { setAdminRights, upsertTelegramUser, type Db, type User } from '@standup/db';
 import {
   DevAuthRequest,
   TelegramAuthRequest,
@@ -19,6 +19,14 @@ export const authRoutes: FastifyPluginAsync<{
   db: Db;
   storage: FileStorage;
 }> = async (app, { config, db, storage }) => {
+  /** Первые админы из ADMIN_TELEGRAM_IDS получают права при входе. */
+  // Главные админы из ADMIN_TELEGRAM_IDS: права возвращаются при каждом входе.
+  async function withBootstrapAdmin(user: User): Promise<User> {
+    if (!config.adminTelegramIds.includes(user.telegramId)) return user;
+    if (user.isAdmin && user.canManageAdmins) return user;
+    return setAdminRights(db, user.id, { isAdmin: true, canManageAdmins: true });
+  }
+
   app.get('/auth/config', async (): Promise<AuthConfigResponse> => ({
     devAuth: config.devAuth,
     botUsername: config.botUsername,
@@ -34,7 +42,7 @@ export const authRoutes: FastifyPluginAsync<{
       req.log.info({ reason: res.reason }, 'initData rejected');
       throw new ApiError('UNAUTHORIZED', 'Неверные данные авторизации Telegram');
     }
-    const user = await upsertTelegramUser(db, res.data.user);
+    const user = await withBootstrapAdmin(await upsertTelegramUser(db, res.data.user));
     return {
       token: app.jwt.sign({ sub: user.id }),
       user: await loadMe(db, storage, user),
@@ -45,11 +53,13 @@ export const authRoutes: FastifyPluginAsync<{
   if (config.devAuth) {
     app.post('/auth/dev', { config: authRateLimit }, async (req): Promise<AuthResponse> => {
       const body = DevAuthRequest.parse(req.body);
-      const user = await upsertTelegramUser(db, {
-        id: body.telegramId,
-        first_name: body.firstName,
-        username: body.username,
-      });
+      const user = await withBootstrapAdmin(
+        await upsertTelegramUser(db, {
+          id: body.telegramId,
+          first_name: body.firstName,
+          username: body.username,
+        }),
+      );
       return {
         token: app.jwt.sign({ sub: user.id }),
         user: await loadMe(db, storage, user),

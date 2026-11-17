@@ -61,6 +61,10 @@ export const users = pgTable('users', {
   preShowMinutes: integer('pre_show_minutes').default(30),
   // Аккаунт удалён (DELETE /me): персональные данные стёрты, строка оставлена для истории.
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  // Администратор: проверяет площадки.
+  isAdmin: boolean('is_admin').notNull().default(false),
+  // Может назначать и снимать админов (и давать это право другим). Только вместе с isAdmin.
+  canManageAdmins: boolean('can_manage_admins').notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -151,6 +155,12 @@ export const organizerProfiles = pgTable('organizer_profiles', {
   updatedAt: updatedAt(),
 });
 
+// Новая площадка ждёт проверки админом; до неё её видит и может выбрать только автор.
+export const venueStatusEnum = pgEnum('venue_status', ['pending', 'approved', 'rejected']);
+
+// Тип площадки — плашка на фото в карточке.
+export const venueKindEnum = pgEnum('venue_kind', ['club', 'bar', 'hall', 'other']);
+
 export const venues = pgTable(
   'venues',
   {
@@ -167,10 +177,19 @@ export const venues = pgTable(
     logoS3Key: text('logo_s3_key'),
     photoS3Key: text('photo_s3_key'),
     photoPreviewS3Key: text('photo_preview_s3_key'),
+    // Мест в зале; null — не указано.
+    capacity: integer('capacity'),
+    // Тип площадки; null — у площадок, добавленных до появления поля.
+    kind: venueKindEnum('kind'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    status: venueStatusEnum('status').notNull().default('pending'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    // Причина отказа — у отклонённой площадки, которую нельзя удалить (на ней есть события).
+    rejectReason: text('reject_reason'),
     createdAt: createdAt(),
   },
-  (t) => [index('venues_city_idx').on(t.cityId)],
+  (t) => [index('venues_city_idx').on(t.cityId), index('venues_status_idx').on(t.status)],
 );
 
 // tryout — «Проверка», paid — «Платка», concert показывается как «Шоу».
@@ -232,6 +251,10 @@ export const notificationKindEnum = pgEnum('notification_kind', [
   'new_application',
   'broadcast',
   'host_invitation',
+  'venue_submitted',
+  'venue_approved',
+  'venue_rejected',
+  'admin_granted',
 ]);
 export const notificationStatusEnum = pgEnum('notification_status', [
   'pending',

@@ -105,6 +105,7 @@ for (const v of venueSeeds) {
       address: v.address,
       cityId: c.id,
       timezone: c.timezone,
+      status: 'approved',
     });
     venuesAdded += 1;
   }

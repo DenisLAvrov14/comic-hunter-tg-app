@@ -17,15 +17,20 @@ import {
 import { ComedianProfileScreen, OrganizerProfileScreen, RolesScreen } from './screens/Profiles';
 import { SettingsScreen } from './screens/Settings';
 import { VenuesScreen } from './screens/Venues';
+import { AdminScreen } from './screens/Admin';
 
 const t = ru.app;
 
-/** startapp: e_<event> → событие, j_<token> → запись по ссылке, i_<participation> → входящие. */
+/**
+ * startapp: e_<event> → событие, j_<token> → запись по ссылке, i_<participation> → входящие,
+ * a_venues → админка (новая площадка на проверке).
+ */
 function startTarget(param: string | null): string | null {
-  const m = /^([eji])_([A-Za-z0-9_-]{1,64})$/.exec(param ?? '');
+  const m = /^([ejia])_([A-Za-z0-9_-]{1,64})$/.exec(param ?? '');
   if (!m) return null;
   if (m[1] === 'e') return `/events/${m[2]}`;
   if (m[1] === 'j') return `/join/${m[2]}`;
+  if (m[1] === 'a') return '/admin';
   return '/inbox';
 }
 
@@ -58,6 +63,7 @@ function AuthenticatedRoutes() {
           <Route path="/profile" element={<ComedianProfileScreen />} />
           <Route path="/organizer" element={<OrganizerProfileScreen />} />
           <Route path="/venues" element={<VenuesScreen />} />
+          <Route path="/admin" element={<AdminScreen />} />
           <Route path="/roles" element={<RolesScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="/calendar" element={<CalendarScreen />} />

@@ -209,11 +209,7 @@ function BusyCard({ busy, tz }: { busy: CalendarBusy; tz: string }) {
       </span>
       <strong>{busy.title || kind}</strong>
       {details && <span className="hint">{details}</span>}
-      <button
-        className="link-button danger-text"
-        disabled={remove.isPending}
-        onClick={() => remove.mutate()}
-      >
+      <button className="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
         {c.remove}
       </button>
     </div>
@@ -401,7 +397,7 @@ function GigForm({
         <button disabled={add.isPending} onClick={() => required.check() && add.mutate()}>
           {c.save}
         </button>
-        <button className="outline" onClick={onDone}>
+        <button className="secondary" onClick={onDone}>
           {t.back}
         </button>
       </div>

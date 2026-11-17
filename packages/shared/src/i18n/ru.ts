@@ -138,6 +138,7 @@ export const ru = {
       venues: 'Площадки',
       roles: 'Мои роли',
       notifications: 'Уведомления',
+      admin: 'Админка',
     },
     tabs: {
       calendar: 'Календарь',
@@ -166,11 +167,87 @@ export const ru = {
       logo: 'Лого',
       logoHint: 'Квадратное, видно в списке площадок',
       photo: 'Фото площадки',
-      choose: 'Выбрать',
+      photoShort: 'Фото',
+      onMap: 'На карте',
+      openMap: 'Открыть',
+      kind: 'Тип площадки',
+      kinds: { club: 'Стендап-клуб', bar: 'Бар', hall: 'Концертный зал', other: 'Другое' },
+      kindMissing: 'Выберите тип площадки',
+      edit: 'Изменить',
+      afisha: 'Афиша',
+      afishaCount: (n: number) => {
+        const m10 = n % 10;
+        const m100 = n % 100;
+        const word =
+          m10 === 1 && m100 !== 11
+            ? 'событие'
+            : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)
+              ? 'события'
+              : 'событий';
+        return `${n} ${word}`;
+      },
+      afishaEmpty: 'Ближайших событий нет',
+      today: 'сегодня',
+      tomorrow: 'завтра',
+      owner: 'Владелец',
+      capacity: 'Мест',
+      setCapacity: 'Указать',
+      capacityField: 'Мест в зале',
+      capacityHint: 'Сколько зрителей вмещает зал',
+      capacityInvalid: 'Число мест — от 1 до 10 000',
+      save: 'Сохранить',
+      cancel: 'Отмена',
+      uploadFailed: 'Не загрузилось',
+      choose: 'Добавить',
+      pickFile: 'Выбрать файл',
       change: 'Заменить',
       remove: 'Убрать',
       uploading: 'Загрузка…',
       tooLarge: 'Файл больше 10 МБ',
+      pending: 'На проверке',
+      pendingHint:
+        'Площадку проверит администратор. До этого её видите только вы, и её можно ставить в свои события.',
+      rejected: 'Отклонена',
+      rejectedHint: (reason: string | null) =>
+        `Администратор отклонил площадку${reason ? `: ${reason}` : ''}. Уже созданные события на ней остаются, новые создать нельзя.`,
+      created: (name: string) =>
+        `✅ Площадка «${name}» добавлена и отправлена на проверку. Она уже в списке выше; пока её видите только вы — можно сразу ставить в свои события.`,
+    },
+    admin: {
+      title: 'Админка',
+      tabs: { venues: 'Площадки', admins: 'Админы' },
+      venuesEmpty: 'Новых площадок на проверке нет.',
+      addedBy: 'Добавил',
+      authorDeleted: 'автор удалил аккаунт',
+      approve: 'Подтвердить',
+      reject: 'Отклонить',
+      rejectReason: 'Причина отказа (увидит автор)',
+      rejectReasonPlaceholder: 'Например: такой площадки нет, это дубль «…»',
+      rejectConfirm: 'Отклонить',
+      cancel: 'Отмена',
+      approved: (name: string) => `«${name}» подтверждена`,
+      deleted: (name: string) => `«${name}» отклонена и удалена`,
+      hidden: (name: string) =>
+        `«${name}» отклонена. На ней уже есть события — площадка скрыта, события остались.`,
+      admins: 'Администраторы',
+      adminsHint:
+        'Админы проверяют новые площадки. Назначать и снимать админов могут только те, у кого есть право «назначает».',
+      you: 'вы',
+      owner: 'главный',
+      manager: 'назначает',
+      revoke: 'Снять',
+      revokeConfirm: (name: string) => `Снять права админа у ${name}?`,
+      grantManage: 'Дать право назначать',
+      grantManageConfirm: (name: string) =>
+        `${name} сможет назначать и снимать админов и давать это право другим. Продолжить?`,
+      revokeManage: 'Забрать право назначать',
+      cantManage: 'Назначать админов может главный админ или тот, кому он дал это право.',
+      grantTitle: 'Назначить админа',
+      search: 'Имя или @username',
+      searchHint: 'Человек должен хотя бы раз открыть приложение.',
+      searchEmpty: 'Никого не нашли',
+      grant: 'Назначить',
+      alreadyAdmin: 'уже админ',
     },
     map: {
       title: 'Карта',
@@ -627,6 +704,36 @@ export const ru = {
     reserveCalled: (n: number) =>
       n > 0 ? `Позвали резервистов: ${n}` : 'Свободных резервистов нет',
     settings: 'Настройки уведомлений',
+    venueSubmitted: (name: string, city: string, address: string, author: string) =>
+      `📍 Новая площадка на проверку
+
+${name}
+${city}, ${address}
+Добавил: ${author}`,
+    venueApproved: (name: string) =>
+      `✅ Площадка «${name}» проверена — теперь её видят все организаторы.`,
+    venueRejected: (name: string, reason: string | null, hidden: boolean) =>
+      `❌ Площадка «${name}» не прошла проверку.${
+        reason
+          ? `
+Причина: ${reason}`
+          : ''
+      }
+
+${
+  hidden
+    ? 'На ней уже есть ваши события — они остаются, но новые на этой площадке создать нельзя.'
+    : 'Площадка удалена.'
+}`,
+    openAdmin: 'Открыть админку',
+    adminGranted: (canManageAdmins: boolean) =>
+      canManageAdmins
+        ? `🛡 Вам дали право назначать админов.
+
+Теперь в админке («Ещё» → «Админка») вы можете назначать и снимать админов, а также проверять новые площадки.`
+        : `🛡 Вас назначили администратором.
+
+В приложении появился раздел «Ещё» → «Админка»: там новые площадки, которые нужно проверить. Когда кто-то добавит площадку, придёт сообщение.`,
   },
   messages: {
     broadcast: (title: string, venue: string, when: string, text: string) =>

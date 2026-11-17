@@ -25,6 +25,7 @@ const config: Config = {
   devAuth: false,
   logLevel: 'silent',
   initDataMaxAgeSeconds: 86400,
+  adminTelegramIds: [],
   s3: {
     endpoint: '',
     region: '',
@@ -283,6 +284,8 @@ describe.skipIf(!url)('API профили и справочники (Postgres)',
 
   it('организатор создаёт площадку, она видна в списке города', async () => {
     const created = await call('POST', '/venues', {
+      kind: 'club',
+      capacity: 50,
       name: `Тест ${telegramId}`,
       address: 'ул. Тестовая, 1',
       cityId: moscowId,
@@ -296,6 +299,8 @@ describe.skipIf(!url)('API профили и справочники (Postgres)',
   it('без роли организатора площадку создать нельзя', async () => {
     await call('PUT', '/me/roles', { roles: ['comedian'] });
     const res = await call('POST', '/venues', {
+      kind: 'club',
+      capacity: 50,
       name: 'Нельзя',
       address: 'ул. Тестовая, 2',
       cityId: moscowId,

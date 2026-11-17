@@ -275,7 +275,7 @@ function AcceptedList({
                 )}
                 <div className="action-bar">
                   {rights.callReserve && active && lineup.reserve.length > 0 && (
-                    <button className="outline" onClick={() => onReplace(item)}>
+                    <button className="secondary" onClick={() => onReplace(item)}>
                       {l.replace}
                     </button>
                   )}
@@ -289,7 +289,7 @@ function AcceptedList({
                     ).map(([a, label]) => (
                       <button
                         key={a}
-                        className={a === 'remove' ? 'outline danger-text' : 'outline'}
+                        className={a === 'remove' ? 'danger' : 'secondary'}
                         disabled={action.busy !== null}
                         onClick={() => action.run(item.id, a)}
                       >
@@ -383,7 +383,7 @@ function Attendance({ item, eventId }: { item: LineupItem; eventId: string }) {
       {(['present', 'absent'] as const).map((v) => (
         <button
           key={v}
-          className={item.attendance === v ? '' : 'outline'}
+          className={item.attendance === v ? '' : 'secondary'}
           disabled={mark.isPending}
           onClick={() => mark.mutate(item.attendance === v ? 'unknown' : v)}
         >
@@ -504,8 +504,8 @@ function RowActions({
             a === 'accept' || a === 'promote'
               ? ''
               : a === 'reject' || a === 'remove'
-                ? 'outline danger-text'
-                : 'outline'
+                ? 'danger'
+                : 'secondary'
           }
           disabled={disabled}
           onClick={() => action.run(item.id, a)}
@@ -774,7 +774,7 @@ function Tools({
             </button>
             {active && (
               <button
-                className="secondary danger-text"
+                className="danger"
                 onClick={() => {
                   if (window.confirm(t.manage.cancelConfirm)) {
                     eventMutation.mutate(() => api.cancelEvent(event.id));
@@ -823,7 +823,7 @@ function Hosts({ event, staff }: { event: EventDetails; staff: StaffMember[] }) 
             </span>
           </span>
           <button
-            className="small secondary"
+            className="secondary"
             disabled={update.isPending}
             onClick={() => update.mutate(() => api.deleteStaff(event.id, m.userId))}
           >

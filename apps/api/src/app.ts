@@ -17,6 +17,7 @@ import { referenceRoutes } from './routes/reference';
 import { lineupRoutes } from './routes/lineup';
 import { refreshEventPosts, type ChatPoster } from '@standup/notify';
 import { postRoutes } from './routes/posts';
+import { adminRoutes } from './routes/admin';
 import type { FileStorage } from './storage';
 
 export interface AppDeps {
@@ -77,6 +78,7 @@ export async function buildApp({ config, db, storage, poster }: AppDeps) {
       await api.register(lineupRoutes, { db, storage });
       await api.register(postRoutes, { db, poster, links });
       await api.register(calendarRoutes, { db, publicBaseUrl: config.publicBaseUrl });
+      await api.register(adminRoutes, { db, storage, config });
       if (config.internalToken) {
         await api.register(internalRoutes, { db, token: config.internalToken });
       }

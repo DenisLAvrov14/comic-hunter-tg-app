@@ -38,7 +38,13 @@ describe.skipIf(!TEST_DATABASE_URL)('API состав (Postgres)', () => {
     await org.call('PUT', '/me/roles', { roles: ['organizer'] });
     await org.call('PUT', '/me/organizer-profile', { displayName: 'Орг', cityId: moscow });
     venueId = (
-      await org.call('POST', '/venues', { name: `Зал ${base}`, address: 'ул. 5', cityId: moscow })
+      await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
+        name: `Зал ${base}`,
+        address: 'ул. 5',
+        cityId: moscow,
+      })
     ).json().id;
 
     host = await login(ctx.app, base + 1, 'Ведущий');

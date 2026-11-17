@@ -4,15 +4,27 @@ import { z } from 'zod';
 import {
   createVenue,
   findCity,
+  listAdminIds,
   findVenue,
   getUserRoles,
   listCities,
   listVenuesByCity,
+  listUpcomingVenueEvents,
+  updateVenueInfo,
   updateVenueImages,
   type Db,
   type Venue as VenueRow,
 } from '@standup/db';
-import { VenueInput, VenuesQuery, type City, type Venue } from '@standup/shared';
+import { groupAfisha } from '@standup/domain';
+import {
+  VenueInput,
+  VenuePatch,
+  VenuesQuery,
+  type City,
+  type Venue,
+  type VenueListItem,
+} from '@standup/shared';
+import { upsertNotification } from '@standup/notify';
 import { ApiError } from '../errors';
 import { processLogo, processPhoto } from '../images';
 import type { FileStorage } from '../storage';
@@ -34,9 +46,14 @@ export function toVenue(storage: FileStorage, v: VenueRow, userId: string): Venu
           }
         : null,
     canEdit: v.createdBy === userId,
+    capacity: v.capacity,
+    kind: v.kind,
+    status: v.status,
+    rejectReason: v.rejectReason,
   };
 }
 
+const VenueParams = z.object({ id: z.string().uuid() });
 const ImageParams = z.object({ id: z.string().uuid(), kind: z.enum(['logo', 'photo']) });
 
 export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = async (
@@ -47,9 +64,32 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
 
   app.get('/cities', async (): Promise<City[]> => listCities(db));
 
-  app.get('/venues', async (req): Promise<Venue[]> => {
+  app.get('/venues', async (req): Promise<VenueListItem[]> => {
     const { city } = VenuesQuery.parse(req.query);
-    return (await listVenuesByCity(db, city)).map((v) => toVenue(storage, v, req.user.sub));
+    const rows = await listVenuesByCity(db, city, req.user.sub);
+    // Афиша — только у проверенных: на остальных публичных событий нет.
+    const approved = rows.filter((r) => r.venue.status === 'approved').map((r) => r.venue.id);
+    const afisha = groupAfisha(await listUpcomingVenueEvents(db, approved, new Date()));
+    return rows.map(({ venue, owner }) => {
+      const a = afisha.get(venue.id);
+      return {
+        ...toVenue(storage, venue, req.user.sub),
+        owner: owner && {
+          name: owner.displayName ?? [owner.firstName, owner.lastName].filter(Boolean).join(' '),
+          telegramUsername: owner.telegramUsername,
+          contact: owner.contact,
+        },
+        afisha: {
+          total: a?.total ?? 0,
+          items: (a?.items ?? []).map((e) => ({
+            id: e.id,
+            title: e.title,
+            format: e.format,
+            startsAt: e.startsAt.toISOString(),
+          })),
+        },
+      };
+    });
   });
 
   app.post('/venues', async (req, reply): Promise<Venue> => {
@@ -59,10 +99,26 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     if (!roles.includes('organizer')) throw new ApiError('FORBIDDEN');
     const city = await findCity(db, body.cityId);
     if (!city) throw new ApiError('VALIDATION', 'Город не найден', { field: 'cityId' });
-    const venue = await createVenue(db, {
-      ...body,
-      timezone: city.timezone,
-      createdBy: req.user.sub,
+    // Любая новая площадка — на проверку, в том числе от админа (он видит её в очереди сам).
+    const venue = await db.transaction(async (tx) => {
+      const created = await createVenue(tx, {
+        ...body,
+        timezone: city.timezone,
+        createdBy: req.user.sub,
+        status: 'pending',
+      });
+      const now = new Date();
+      for (const adminId of await listAdminIds(tx)) {
+        if (adminId === req.user.sub) continue;
+        await upsertNotification(tx, {
+          userId: adminId,
+          kind: 'venue_submitted',
+          sendAt: now,
+          dedupeKey: `venue_submitted:${adminId}:${created.id}`,
+          payload: { venueId: created.id },
+        });
+      }
+      return created;
     });
     reply.status(201);
     return toVenue(storage, venue, req.user.sub);
@@ -75,6 +131,13 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     if (venue.createdBy !== userId) throw new ApiError('FORBIDDEN');
     return venue;
   }
+
+  app.patch('/venues/:id', async (req): Promise<Venue> => {
+    const { id } = VenueParams.parse(req.params);
+    const patch = VenuePatch.parse(req.body);
+    await editableVenue(id, req.user.sub);
+    return toVenue(storage, await updateVenueInfo(db, id, patch), req.user.sub);
+  });
 
   async function dropFiles(keys: Array<string | null>) {
     const existing = keys.filter((k): k is string => !!k);

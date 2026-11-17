@@ -118,6 +118,8 @@ export function useRequired(fields: Array<[label: string, filled: boolean]>) {
       );
       return false;
     },
+    /** Убрать подсветку — после успешной отправки, когда форма очищена. */
+    reset: () => setShown(false),
   };
 }
 

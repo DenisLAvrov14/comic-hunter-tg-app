@@ -70,7 +70,8 @@ function Count({ n, className }: { n: number; className: string }) {
   if (n <= 0) return null;
   return <span className={className}>{n > 99 ? '99+' : n}</span>;
 }
-const MORE_TAB: Tab = { path: '/more', label: t.tabs.more, icon: 'more' };
+// На «Ещё» — счётчик площадок на проверке (у админов; у остальных он 0).
+const MORE_TAB: Tab = { path: '/more', label: t.tabs.more, icon: 'more', badge: 'admin' };
 
 const tabsOf = (role: UserRole | null): Tab[] => [...(role ? TABS[role] : []), MORE_TAB];
 
@@ -215,6 +216,16 @@ export function RoleHome() {
   return <Navigate to={tabsOf(active)[0]!.path} replace />;
 }
 
+function AdminLink() {
+  const badges = useBadges();
+  return (
+    <Link to="/admin">
+      <span className="grow">{t.menu.admin}</span>
+      <Count n={badges.data?.admin ?? 0} className="menu-badge" />
+    </Link>
+  );
+}
+
 export function MoreScreen() {
   const { active } = useActiveRole();
   const { me } = useMe();
@@ -246,12 +257,13 @@ export function MoreScreen() {
         {active !== 'organizer' && <Link to="/venues">{t.menu.venues}</Link>}
         <Link to="/settings">{t.menu.notifications}</Link>
         <Link to="/roles">{t.menu.roles}</Link>
+        {me.isAdmin && <AdminLink />}
       </nav>
       <section className="account-delete">
         <p className="hint">{t.account.deleteHint}</p>
         <button
           type="button"
-          className="secondary danger-text"
+          className="danger"
           disabled={remove.isPending}
           onClick={() => {
             if (window.confirm(t.account.deleteConfirm)) remove.mutate();

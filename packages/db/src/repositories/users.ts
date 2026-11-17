@@ -1,5 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from '../client';
+import type { DbOrTx } from './events';
 import { userRoles, users, type User } from '../schema';
 
 export interface TelegramUserInput {
@@ -35,7 +36,7 @@ export async function upsertTelegramUser(
   return row!;
 }
 
-export async function findUserById(db: Db, id: string): Promise<User | undefined> {
+export async function findUserById(db: DbOrTx, id: string): Promise<User | undefined> {
   const [row] = await db.select().from(users).where(eq(users.id, id));
   return row;
 }

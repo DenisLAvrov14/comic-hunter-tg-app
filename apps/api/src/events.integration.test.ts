@@ -74,13 +74,21 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     await org.call('PUT', '/me/organizer-profile', { displayName: 'Орг', cityId: moscowId });
     venueId = (
       await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
         name: `Подвал ${base}`,
         address: 'ул. 1',
         cityId: moscowId,
       })
     ).json().id;
     venue2Id = (
-      await org.call('POST', '/venues', { name: `Бар ${base}`, address: 'ул. 2', cityId: moscowId })
+      await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
+        name: `Бар ${base}`,
+        address: 'ул. 2',
+        cityId: moscowId,
+      })
     ).json().id;
     a = await comedian(1, 'Аня');
     b = await comedian(2, 'Боря');

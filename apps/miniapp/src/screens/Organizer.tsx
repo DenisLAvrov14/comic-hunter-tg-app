@@ -230,8 +230,15 @@ function EventForm({ event }: { event?: EventDetails }) {
               {t.eventForm.venuePlaceholder}
             </option>
             {venues.data?.map((v) => (
-              <option key={v.id} value={v.id}>
+              // Отклонённую площадку нельзя выбрать, но в своём событии она остаётся.
+              <option
+                key={v.id}
+                value={v.id}
+                disabled={v.status === 'rejected' && v.id !== event?.venue.id}
+              >
                 {v.name} — {v.address}
+                {v.status !== 'approved' &&
+                  ` · ${v.status === 'rejected' ? t.venues.rejected : t.venues.pending}`}
               </option>
             ))}
           </Select>

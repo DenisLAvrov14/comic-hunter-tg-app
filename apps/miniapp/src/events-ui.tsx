@@ -38,7 +38,7 @@ export function HostAnswer({ eventId, status }: { eventId: string; status: Staff
           </button>
         )}
         <button
-          className="outline danger-text"
+          className="danger"
           disabled={answer.isPending}
           onClick={() => {
             if (status === 'invited' || window.confirm(t.hosting.declineConfirm))

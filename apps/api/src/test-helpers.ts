@@ -1,5 +1,5 @@
 // Общие помощники интеграционных тестов API.
-import { createDb, runMigrations, syncCities, type Db } from '@standup/db';
+import { createDb, eq, runMigrations, schema, syncCities, type Db } from '@standup/db';
 import { buildApp } from './app';
 import { signInitData } from './auth/initData';
 import type { Config } from './config';
@@ -8,6 +8,7 @@ import { MemoryStorage } from './storage';
 
 export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 export const TEST_BOT_TOKEN = '123456:TEST-token';
+export const TEST_ADMIN_TELEGRAM_ID = 7_700_000_001;
 
 export const testConfig: Config = {
   env: 'test',
@@ -23,6 +24,8 @@ export const testConfig: Config = {
   devAuth: false,
   logLevel: 'silent',
   initDataMaxAgeSeconds: 86400,
+  // Первый админ для тестов админки: входит с этим Telegram ID.
+  adminTelegramIds: [TEST_ADMIN_TELEGRAM_ID],
   s3: {
     endpoint: '',
     region: '',
@@ -132,6 +135,11 @@ export async function login(app: App, telegramId: number, firstName = 'Тест'
         ...(payload ? { payload } : {}),
       }),
   };
+}
+
+/** Площадка проверена админом — видна всем организаторам (для тестов не про админку). */
+export async function approveVenue(db: Db, venueId: string) {
+  await db.update(schema.venues).set({ status: 'approved' }).where(eq(schema.venues.id, venueId));
 }
 
 /** Уникальный диапазон telegram_id на тестовый файл, чтобы файлы не мешали друг другу. */

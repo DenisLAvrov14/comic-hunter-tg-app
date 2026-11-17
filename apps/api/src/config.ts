@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseAdminTelegramIds } from '@standup/domain';
 import type { S3Config } from './storage';
 
 const bool = z
@@ -28,6 +29,8 @@ const EnvSchema = z.object({
   S3_SECRET_KEY: z.string().default('minioadmin'),
   S3_PUBLIC_URL: z.string().default('/media'),
   S3_CREATE_BUCKET: bool,
+  // Telegram ID первых админов через запятую; остальных они назначают в приложении.
+  ADMIN_TELEGRAM_IDS: z.string().default(''),
 });
 
 export type Config = {
@@ -44,6 +47,7 @@ export type Config = {
   devAuth: boolean;
   logLevel: string;
   initDataMaxAgeSeconds: number;
+  adminTelegramIds: number[];
   s3: S3Config & { createBucket: boolean };
 };
 
@@ -74,6 +78,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     devAuth: e.DEV_AUTH,
     logLevel: e.LOG_LEVEL,
     initDataMaxAgeSeconds: 24 * 60 * 60,
+    adminTelegramIds: parseAdminTelegramIds(e.ADMIN_TELEGRAM_IDS),
     s3: {
       endpoint: e.S3_ENDPOINT,
       region: e.S3_REGION,

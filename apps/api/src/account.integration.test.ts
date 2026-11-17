@@ -4,6 +4,7 @@ import { eq, schema } from '@standup/db';
 import { ru } from '@standup/shared';
 import {
   TEST_DATABASE_URL,
+  approveVenue,
   login,
   setupTestApp,
   telegramIdBase,
@@ -42,8 +43,15 @@ describe.skipIf(!TEST_DATABASE_URL)('API удаление аккаунта (Post
     await org.call('PUT', '/me/roles', { roles: ['organizer'] });
     await org.call('PUT', '/me/organizer-profile', { displayName: 'Орг', cityId: moscow });
     venueId = (
-      await org.call('POST', '/venues', { name: `Зал ${base}`, address: 'ул. 1', cityId: moscow })
+      await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
+        name: `Зал ${base}`,
+        address: 'ул. 1',
+        cityId: moscow,
+      })
     ).json().id;
+    await approveVenue(ctx.db, venueId);
 
     comic = await login(ctx.app, base + 1, 'Комик');
     await comic.call('PUT', '/me/roles', { roles: ['comedian', 'organizer'] });

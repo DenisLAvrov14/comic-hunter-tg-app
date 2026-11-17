@@ -260,7 +260,7 @@ function RuleEditor({
             <button disabled={saving} onClick={() => onSave(body(rule.enabled))}>
               {r.save}
             </button>
-            <button className="secondary danger-text" onClick={onRemove}>
+            <button className="danger" onClick={onRemove}>
               {r.remove}
             </button>
           </div>
@@ -294,7 +294,7 @@ function FeedSection() {
           <div className="action-bar">
             <button onClick={() => openExternal(data.pageUrl)}>{f.subscribe}</button>
             <button
-              className="outline"
+              className="secondary"
               onClick={() =>
                 void navigator.clipboard?.writeText(data.url).then(() => {
                   setCopied(true);
@@ -308,7 +308,7 @@ function FeedSection() {
           <p className="hint">{f.iphone}</p>
           <p className="hint">{f.google}</p>
           <button
-            className="link-button danger-text"
+            className="danger"
             onClick={() => {
               if (window.confirm(f.rotateConfirm)) rotate.mutate();
             }}

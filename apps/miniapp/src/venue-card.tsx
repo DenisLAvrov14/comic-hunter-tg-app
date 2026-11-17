@@ -1,0 +1,274 @@
+import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ru, type Venue, type VenueListItem } from '@standup/shared';
+import { dayLabel, formatTime } from './format';
+import { openExternal, openTelegramProfile } from './telegram';
+
+const v = ru.app.venues;
+
+const ICONS = {
+  pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
+  map: 'M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z M9 4v13 M15 6.5v13',
+  photo:
+    'M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z M12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z',
+  logo: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M8.5 14.5s1.2 1.5 3.5 1.5 3.5-1.5 3.5-1.5 M9 9.5h.01 M15 9.5h.01',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z M5.5 11a6.5 6.5 0 0 0 13 0 M12 17.5V21',
+  seat: 'M6 11V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5 M4 11h16v4H4z M6 15v4 M18 15v4',
+  edit: 'M4 20h4L19 9l-4-4L4 16v4Z M13.5 6.5l4 4',
+} as const;
+
+export type VenueIcon = keyof typeof ICONS;
+
+export function VenueIconSvg({ name }: { name: VenueIcon }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={ICONS[name]} />
+    </svg>
+  );
+}
+
+/** Ссылка на площадку в Яндекс Картах. */
+export function venueMapUrl(cityName: string | undefined, venue: Venue) {
+  const text = [cityName, venue.address, venue.name].filter(Boolean).join(', ');
+  return `https://yandex.ru/maps/?text=${encodeURIComponent(text)}`;
+}
+
+/** Плитка действия внизу карточки: иконка и подпись. */
+export function VenueTile({
+  icon,
+  label,
+  onClick,
+  disabled,
+  corner,
+}: {
+  icon: VenueIcon;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  /** Маленькая кнопка в углу плитки (например, «убрать»). */
+  corner?: ReactNode;
+}) {
+  return (
+    <div className="venue-tile-wrap">
+      <button type="button" className="venue-tile" disabled={disabled} onClick={onClick}>
+        <VenueIconSvg name={icon} />
+        <span>{label}</span>
+      </button>
+      {corner}
+    </div>
+  );
+}
+
+/** Плашка-показатель в шапке: иконка с подписью и крупное значение. */
+function Stat({
+  icon,
+  label,
+  value,
+  onClick,
+}: {
+  icon: VenueIcon;
+  label: string;
+  value: string;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <span className="venue-stat-label">
+        <VenueIconSvg name={icon} />
+        {label}
+      </span>
+      <span className="venue-stat-value">{value}</span>
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="venue-stat" onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className="venue-stat">{body}</div>
+  );
+}
+
+/**
+ * Карточка площадки. Шапка — фото на всю её высоту слева; справа название, город, адрес
+ * и две плашки: «Мест» и «На карте». Ниже — статус проверки, плитки и доп. содержимое.
+ */
+/** Афиша: ближайшие события площадки; нажатие — открыть событие. */
+function AfishaPanel({ afisha, timezone }: { afisha: VenueListItem['afisha']; timezone: string }) {
+  const navigate = useNavigate();
+  return (
+    <div className="venue-afisha">
+      <div className="venue-afisha-head">
+        <strong>{v.afisha}</strong>
+        <span className="hint">{afisha.total ? v.afishaCount(afisha.total) : v.afishaEmpty}</span>
+      </div>
+      {afisha.items.length > 0 && (
+        <div className="venue-afisha-items">
+          {afisha.items.map((e, i) => (
+            <button
+              key={e.id}
+              type="button"
+              className={i === 0 ? 'venue-afisha-item next' : 'venue-afisha-item'}
+              onClick={() => navigate(`/events/${e.id}`)}
+            >
+              <span className="venue-afisha-time">{formatTime(e.startsAt, timezone)}</span>
+              <span className="venue-afisha-day">
+                {dayLabel(e.startsAt, timezone, { today: v.today, tomorrow: v.tomorrow })}
+              </span>
+              <span className="venue-afisha-format">{ru.app.formats[e.format]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Контакт из профиля: @ник или t.me — открыть профиль в Telegram, ссылка — открыть,
+ * остальное (телефон, почта) — просто текст.
+ */
+export function ContactLink({ contact }: { contact: string }) {
+  const text = contact.trim();
+  const username = /^(?:@|(?:https?:\/\/)?t\.me\/)([A-Za-z0-9_]{4,32})\/?$/.exec(text)?.[1];
+  if (username) {
+    return (
+      <button type="button" className="link-button" onClick={() => openTelegramProfile(username)}>
+        @{username}
+      </button>
+    );
+  }
+  if (/^https?:\/\//.test(text)) {
+    return (
+      <button type="button" className="link-button" onClick={() => openExternal(text)}>
+        {text.replace(/^https?:\/\//, '')}
+      </button>
+    );
+  }
+  return <span>{text}</span>;
+}
+
+/** Строка «Владелец @ник»: ник — ссылка на профиль в Telegram, чтобы написать. */
+function OwnerLine({ owner }: { owner: NonNullable<VenueListItem['owner']> }) {
+  const username = owner.telegramUsername;
+  return (
+    <p className="venue-card-meta">
+      <span className="hint">{v.owner}</span>{' '}
+      {username ? (
+        <button type="button" className="link-button" onClick={() => openTelegramProfile(username)}>
+          @{username}
+        </button>
+      ) : (
+        <span>{owner.name}</span>
+      )}
+      {owner.contact && owner.contact !== `@${username}` && (
+        <>
+          <span className="hint"> · </span>
+          <ContactLink contact={owner.contact} />
+        </>
+      )}
+    </p>
+  );
+}
+
+export function VenueCard({
+  venue,
+  cityName,
+  showStatus = true,
+  onCapacity,
+  afisha,
+  owner,
+  tiles,
+  children,
+}: {
+  venue: Venue;
+  cityName?: string;
+  /** Ближайшие события — у проверенной площадки в общем списке. */
+  afisha?: VenueListItem['afisha'];
+  /** Кто добавил площадку — показывается, если это не вы. */
+  owner?: VenueListItem['owner'];
+  /** Плашка с пояснением «На проверке» / «Отклонена». */
+  showStatus?: boolean;
+  /** Нажатие на «Мест» — у своей площадки, чтобы поменять число. */
+  onCapacity?: () => void;
+  /** Плитки действий внизу (лого и фото у своей площадки). */
+  tiles?: ReactNode;
+  children?: ReactNode;
+}) {
+  const image = venue.photo?.previewUrl ?? venue.logoUrl;
+  const status = venue.status === 'approved' ? null : venue.status;
+  const media = (
+    <>
+      {image ? (
+        <img className="venue-card-image" src={image} alt="" loading="lazy" />
+      ) : (
+        <span className="venue-card-placeholder">
+          <VenueIconSvg name="mic" />
+        </span>
+      )}
+      {venue.kind && <span className="venue-card-kind">{v.kinds[venue.kind]}</span>}
+      {status && (
+        <span className={status === 'rejected' ? 'venue-card-chip danger' : 'venue-card-chip'}>
+          {status === 'rejected' ? v.rejected : v.pending}
+        </span>
+      )}
+      {venue.photo && venue.logoUrl && (
+        <img className="venue-card-avatar" src={venue.logoUrl} alt="" loading="lazy" />
+      )}
+    </>
+  );
+
+  return (
+    <section className="venue-card">
+      <div className="venue-card-top">
+        {venue.photo ? (
+          <a className="venue-card-media" href={venue.photo.url} target="_blank" rel="noreferrer">
+            {media}
+          </a>
+        ) : (
+          <div className="venue-card-media">{media}</div>
+        )}
+        <div className="venue-card-info">
+          <h3 className="venue-card-name">{venue.name}</h3>
+          {cityName && <span className="venue-card-city">{cityName}</span>}
+          <span className="venue-card-address">
+            <VenueIconSvg name="pin" />
+            <span>{venue.address}</span>
+          </span>
+          <div className="venue-stats">
+            <Stat
+              icon="seat"
+              label={v.capacity}
+              value={venue.capacity ? String(venue.capacity) : onCapacity ? v.setCapacity : '—'}
+              onClick={onCapacity}
+            />
+            <Stat
+              icon="map"
+              label={v.onMap}
+              value={v.openMap}
+              onClick={() => openExternal(venueMapUrl(cityName, venue))}
+            />
+          </div>
+        </div>
+      </div>
+
+      {afisha && venue.status === 'approved' && (
+        <AfishaPanel afisha={afisha} timezone={venue.timezone} />
+      )}
+
+      {owner && !venue.canEdit && <OwnerLine owner={owner} />}
+
+      {showStatus && status && (
+        <div className={status === 'rejected' ? 'venue-card-panel danger' : 'venue-card-panel'}>
+          <span className="hint">
+            {status === 'rejected' ? v.rejectedHint(venue.rejectReason) : v.pendingHint}
+          </span>
+        </div>
+      )}
+
+      {tiles && <div className="venue-card-tiles">{tiles}</div>}
+
+      {children}
+    </section>
+  );
+}

@@ -17,8 +17,16 @@ import { dateTime, time } from './format';
 import { appLink, type LinkConfig } from './links';
 import type { InlineButton, OutgoingMessage } from './sender';
 
-const { participations, events, eventStaff, venues, comedianProfiles, organizerProfiles, users } =
-  schema;
+const {
+  participations,
+  events,
+  eventStaff,
+  venues,
+  cities,
+  comedianProfiles,
+  organizerProfiles,
+  users,
+} = schema;
 const t = ru.notify;
 
 export type Rendered =
@@ -157,6 +165,43 @@ export async function renderDigest(
   };
 }
 
+/**
+ * Проверка площадок. Админам — новая площадка (пропускается, если её уже проверили);
+ * автору — итог. Площадку при отказе могут удалить, поэтому итог берётся из payload.
+ */
+async function renderVenueReview(
+  db: DbOrTx,
+  n: ScheduledNotification,
+  links: LinkConfig,
+  msg: (text: string, buttons?: InlineButton[][]) => Rendered,
+): Promise<Rendered> {
+  const name = String(n.payload.name ?? '');
+  if (n.kind === 'venue_approved') return msg(t.venueApproved(name));
+  if (n.kind === 'venue_rejected') {
+    const reason = typeof n.payload.reason === 'string' ? n.payload.reason : null;
+    return msg(t.venueRejected(name, reason, n.payload.hidden === true));
+  }
+  const [row] = await db
+    .select({ venue: venues, city: cities.name, username: users.telegramUsername })
+    .from(venues)
+    .innerJoin(cities, eq(cities.id, venues.cityId))
+    .leftJoin(users, eq(users.id, venues.createdBy))
+    .where(eq(venues.id, String(n.payload.venueId ?? '')));
+  if (!row) return { skip: 'no_venue' };
+  if (row.venue.status !== 'pending') return { skip: 'reviewed' };
+  const author = row.venue.createdBy ? await organizerName(db, row.venue.createdBy) : '—';
+  const url = appLink(links, 'a_venues');
+  return msg(
+    t.venueSubmitted(
+      row.venue.name,
+      row.city,
+      row.venue.address,
+      row.username ? `${author}, @${row.username}` : author,
+    ),
+    url ? [[{ text: t.openAdmin, url }]] : [],
+  );
+}
+
 export async function renderNotification(
   db: DbOrTx,
   n: ScheduledNotification,
@@ -169,6 +214,20 @@ export async function renderNotification(
   const msg = (text: string, buttons: InlineButton[][] = []): Rendered => ({
     message: { chatId, text, buttons: buttons.filter((r) => r.length > 0) },
   });
+
+  if (n.kind === 'admin_granted') {
+    // Пока сообщение ждало отправки, права могли забрать.
+    if (!user.isAdmin) return { skip: 'not_admin' };
+    const url = appLink(links, 'a_venues');
+    return msg(
+      t.adminGranted(n.payload.canManageAdmins === true),
+      url ? [[{ text: t.openAdmin, url }]] : [],
+    );
+  }
+
+  if (n.kind === 'venue_submitted' || n.kind === 'venue_approved' || n.kind === 'venue_rejected') {
+    return renderVenueReview(db, n, links, msg);
+  }
 
   if (n.kind === 'day_digest' || n.kind === 'day_digest_repeat') {
     return renderDigest(db, user, String(n.payload.date), {

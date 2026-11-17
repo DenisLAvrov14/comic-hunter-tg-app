@@ -31,6 +31,8 @@ describe.skipIf(!TEST_DATABASE_URL)('Посты в чаты (Postgres)', () => {
     await org.call('PUT', '/me/organizer-profile', { displayName: 'Ольга', cityId: moscow });
     venueId = (
       await org.call('POST', '/venues', {
+        kind: 'club',
+        capacity: 50,
         name: `Подвал ${base}`,
         address: 'ул. 1',
         cityId: moscow,

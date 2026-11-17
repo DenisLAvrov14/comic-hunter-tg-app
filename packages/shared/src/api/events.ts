@@ -339,6 +339,8 @@ export const Badges = z.object({
   events: z.number().int(),
   /** Ведущий: приглашения вести, ждущие ответа. */
   hosting: z.number().int(),
+  /** Админ: площадки на проверке. */
+  admin: z.number().int(),
 });
 export type Badges = z.infer<typeof Badges>;
 

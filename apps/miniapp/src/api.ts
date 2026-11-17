@@ -1,4 +1,5 @@
 import type {
+  AdminPerson,
   ApiErrorBody,
   AuthConfigResponse,
   AuthResponse,
@@ -32,6 +33,8 @@ import type {
   Me,
   MyParticipation,
   OrganizerCandidate,
+  PendingVenue,
+  VenueReviewResult,
   ParticipationActionRequest,
   PublishPostsResponse,
   StaffPermissionsRequest,
@@ -43,6 +46,8 @@ import type {
   UserRole,
   Venue,
   VenueInput,
+  VenueListItem,
+  VenuePatch,
 } from '@standup/shared';
 import { ru } from '@standup/shared';
 
@@ -117,8 +122,9 @@ export const api = {
   },
   deletePhoto: (id: string) => request<void>('DELETE', `/me/photos/${id}`),
   cities: () => request<City[]>('GET', '/cities'),
-  venues: (cityId: number) => request<Venue[]>('GET', `/venues?city=${cityId}`),
+  venues: (cityId: number) => request<VenueListItem[]>('GET', `/venues?city=${cityId}`),
   createVenue: (body: VenueInput) => request<Venue>('POST', '/venues', body),
+  patchVenue: (id: string, body: VenuePatch) => request<Venue>('PATCH', `/venues/${id}`, body),
   uploadVenueImage: (id: string, kind: 'logo' | 'photo', file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -128,6 +134,17 @@ export const api = {
     request<Venue>('DELETE', `/venues/${id}/${kind}`),
   map: (q: { city?: number; date: string }) => request<MapEvent[]>('GET', `/map?${query(q)}`),
   badges: () => request<Badges>('GET', '/me/badges'),
+  adminVenues: () => request<PendingVenue[]>('GET', '/admin/venues'),
+  approveVenue: (id: string) => request<VenueReviewResult>('POST', `/admin/venues/${id}/approve`),
+  rejectVenue: (id: string, reason: string | null) =>
+    request<VenueReviewResult>('POST', `/admin/venues/${id}/reject`, { reason }),
+  admins: () => request<AdminPerson[]>('GET', '/admin/admins'),
+  searchUsers: (q: string) =>
+    request<AdminPerson[]>('GET', `/admin/users?q=${encodeURIComponent(q)}`),
+  grantAdmin: (id: string) => request<void>('PUT', `/admin/admins/${id}`),
+  revokeAdmin: (id: string) => request<void>('DELETE', `/admin/admins/${id}`),
+  grantManage: (id: string) => request<void>('PUT', `/admin/admins/${id}/manage`),
+  revokeManage: (id: string) => request<void>('DELETE', `/admin/admins/${id}/manage`),
 
   openEvents: (q: SearchArea & { from?: string; format?: EventFormat }) =>
     request<EventSummary[]>('GET', `/events?${query(q)}`),
