@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeWebsite,
+  catalogVenuePatch,
   adminChangeError,
   adminGrantNotice,
   applyAdminChange,
@@ -185,5 +187,58 @@ describe('groupAfisha', () => {
 
   it('нет событий — нет площадки в результате', () => {
     expect(groupAfisha([]).size).toBe(0);
+  });
+});
+
+describe('catalogVenuePatch', () => {
+  const item = { name: 'PUNCH', address: 'ул. Каирбекова, 35а', kind: 'club', capacity: 80 };
+  const old = {
+    name: 'Punch StandUp Club',
+    address: 'ул. Каирбекова, 35а, 3 этаж',
+    kind: null,
+    capacity: null,
+    website: null,
+  };
+
+  it('площадку из каталога приводит к каталогу', () => {
+    expect(catalogVenuePatch({ ...old, createdBy: null }, item)).toEqual({
+      name: 'PUNCH',
+      address: 'ул. Каирбекова, 35а',
+      kind: 'club',
+      capacity: 80,
+    });
+  });
+
+  it('у площадки пользователя только дозаполняет пустое', () => {
+    expect(catalogVenuePatch({ ...old, createdBy: 'u' }, item)).toEqual({
+      kind: 'club',
+      capacity: 80,
+    });
+    expect(catalogVenuePatch({ ...old, kind: 'bar', capacity: 30, createdBy: 'u' }, item)).toEqual(
+      {},
+    );
+  });
+
+  it('уже совпадает — менять нечего; без мест в каталоге места не стираются', () => {
+    expect(catalogVenuePatch({ ...item, website: null, createdBy: null }, item)).toEqual({});
+    const noCapacity = { name: item.name, address: item.address, kind: item.kind };
+    expect(
+      catalogVenuePatch({ ...item, capacity: 90, website: null, createdBy: null }, noCapacity),
+    ).toEqual({});
+  });
+});
+
+describe('normalizeWebsite', () => {
+  it('добавляет https и убирает слэш в конце', () => {
+    expect(normalizeWebsite(' standupclub.kz/ ')).toBe('https://standupclub.kz');
+    expect(normalizeWebsite('http://punchclub.kz/afisha')).toBe('http://punchclub.kz/afisha');
+  });
+
+  it('пусто — null, мусор — undefined', () => {
+    expect(normalizeWebsite('  ')).toBeNull();
+    expect(normalizeWebsite('клуб')).toBeUndefined();
+    expect(normalizeWebsite('javascript:alert(1)')).toBeUndefined();
+    expect(normalizeWebsite('ftp://site.kz')).toBeUndefined();
+    expect(normalizeWebsite('my site.kz')).toBeUndefined();
   });
 });

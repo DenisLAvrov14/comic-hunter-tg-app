@@ -1,4 +1,3 @@
-import { and, eq } from 'drizzle-orm';
 import { createDb, runMigrations } from './client';
 import { listCities, syncCities } from './repositories/reference';
 import {
@@ -8,7 +7,6 @@ import {
   upsertOrganizerProfile,
 } from './repositories/profiles';
 import { upsertTelegramUser } from './repositories/users';
-import { venues } from './schema';
 
 // Демо-данные для разработки. Идемпотентно: повторный запуск ничего не дублирует.
 // Под любым из пользователей можно войти dev-входом по его telegram_id.
@@ -54,28 +52,7 @@ for (const o of organizers) {
   organizerIds.push(user.id);
 }
 
-const venueSeeds = [
-  { name: 'Подвал', address: 'ул. Мясницкая, 13', city: 'Москва', createdBy: organizerIds[0]! },
-  { name: 'Комеди Бар', address: 'Тверская ул., 7', city: 'Москва', createdBy: organizerIds[0]! },
-  { name: 'Smoky Room', address: 'пр. Абая, 52', city: 'Алматы', createdBy: organizerIds[1]! },
-];
-for (const v of venueSeeds) {
-  const c = city(v.city);
-  const [existing] = await db
-    .select({ id: venues.id })
-    .from(venues)
-    .where(and(eq(venues.name, v.name), eq(venues.cityId, c.id)));
-  if (!existing) {
-    await db.insert(venues).values({
-      name: v.name,
-      address: v.address,
-      cityId: c.id,
-      timezone: c.timezone,
-      createdBy: v.createdBy,
-      status: 'approved',
-    });
-  }
-}
+// Площадки — каталогом: `pnpm seed:venues` (apps/api).
 
 const stageNames = [
   'Артём Белый',
@@ -127,6 +104,4 @@ for (const [i, stageName] of stageNames.entries()) {
 }
 
 await close();
-console.log(
-  `seed done: ${organizers.length} organizers, ${venueSeeds.length} venues, ${stageNames.length} comedians`,
-);
+console.log(`seed done: ${organizers.length} organizers, ${stageNames.length} comedians`);

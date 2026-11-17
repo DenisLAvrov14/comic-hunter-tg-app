@@ -224,14 +224,16 @@ export const Venue = z.object({
   timezone: z.string(),
   /** Лого в списке площадок (квадрат). */
   logoUrl: z.string().nullable(),
-  /** Фото площадки: превью и оригинал. */
-  photo: z.object({ url: z.string(), previewUrl: z.string() }).nullable(),
+  /** Фото площадки (галерея, листается в карточке): превью и оригинал. */
+  photos: z.array(z.object({ id: z.string().uuid(), url: z.string(), previewUrl: z.string() })),
   /** Менять лого и фото может тот, кто добавил площадку. */
   canEdit: z.boolean(),
   /** Мест в зале; null — не указано. */
   capacity: z.number().int().nullable(),
   /** Тип площадки; null — не указан (старые площадки). */
   kind: VenueKind.nullable(),
+  /** Сайт площадки, полный URL; null — не указан. */
+  website: z.string().nullable(),
   /** На проверке и отклонённую видит только автор. */
   status: z.enum(['pending', 'approved', 'rejected']),
   /** Причина отказа — у отклонённой. */
@@ -248,10 +250,16 @@ export const VenueInput = z.object({
   cityId: z.number().int().positive(),
   capacity,
   kind: VenueKind,
+  /** Сайт — по желанию; без https:// — добавится. */
+  website: z.string().trim().max(300).nullable().optional(),
 });
 export type VenueInput = z.infer<typeof VenueInput>;
 
-export const VenuePatch = z.object({ capacity: capacity.optional(), kind: VenueKind.optional() });
+export const VenuePatch = z.object({
+  capacity: capacity.optional(),
+  kind: VenueKind.optional(),
+  website: z.string().trim().max(300).nullable().optional(),
+});
 export type VenuePatch = z.infer<typeof VenuePatch>;
 
 export const VenuesQuery = z.object({

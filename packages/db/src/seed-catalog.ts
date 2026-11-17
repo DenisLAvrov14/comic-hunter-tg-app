@@ -1,9 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createDb, runMigrations } from './client';
 import { listCities, syncCities } from './repositories/reference';
 import { setUserRoles, updateUser, upsertComedianProfile } from './repositories/profiles';
 import { upsertTelegramUser } from './repositories/users';
-import { comedianTrips, venues } from './schema';
+import { comedianTrips } from './schema';
 
 // Каталог для ручной проверки: реальные площадки (адреса из 2ГИС, Яндекс Афиши и сайтов клубов)
 // и публичные комики. Это демо-профили, а не аккаунты самих комиков: контактов нет,
@@ -20,30 +20,7 @@ const DEMO_TELEGRAM_ID_BASE = 9_000_000_000_000;
 const DEMO_CONTACT = 'демо-профиль, контакта нет';
 const DEMO_BIO = 'Демо-профиль для проверки приложения. Это не аккаунт комика.';
 
-const venueSeeds = [
-  { city: 'Москва', name: 'StandUp Store Moscow', address: 'ул. Петровка, 21, стр. 1' },
-  { city: 'Москва', name: 'Стендап клуб на Трубной', address: 'Рождественский б-р, 10/7, стр. 1' },
-  { city: 'Москва', name: 'Stand up Патрики', address: 'Садовая-Кудринская ул., 20' },
-  { city: 'Москва', name: 'Comedy Hub', address: 'Садовая-Черногрязская ул., 22, стр. 1' },
-  { city: 'Москва', name: 'The Hole', address: 'ул. Маросейка, 2/15, стр. 1' },
-  { city: 'Москва', name: 'Comedy 34', address: 'ул. Сретенка, 34/1' },
-  { city: 'Москва', name: 'GlavStandUp Hall', address: 'Садовая-Спасская ул., 21/1' },
-  { city: 'Санкт-Петербург', name: 'Stage StandUp Club', address: 'ул. Восстания, 24/27' },
-  { city: 'Санкт-Петербург', name: 'Stand Up Studio', address: 'ул. Белинского, 9' },
-  { city: 'Санкт-Петербург', name: 'Comedy place', address: 'наб. канала Грибоедова, 36' },
-  { city: 'Екатеринбург', name: 'StandUp Spot', address: 'ул. Вайнера, 10' },
-  { city: 'Екатеринбург', name: 'Pravda', address: 'ул. Шейнкмана, 90' },
-  { city: 'Новосибирск', name: 'Standup room', address: 'ул. Ленина, 10а' },
-  { city: 'Казань', name: 'Stand Up Club Kazan', address: 'ул. Баумана, 44, 3 этаж' },
-  { city: 'Нижний Новгород', name: 'Стендап Клуб', address: 'ул. Рождественская, 10' },
-  { city: 'Краснодар', name: 'Маяковский', address: 'ул. Калинина, 269' },
-  { city: 'Краснодар', name: 'Standup Bar Krasnodar', address: 'ул. Красная, 118' },
-  { city: 'Ростов-на-Дону', name: 'Stand Up City', address: 'Московская ул., 57' },
-  { city: 'Ростов-на-Дону', name: 'Flash', address: 'ул. Седова, 5' },
-  { city: 'Алматы', name: 'Almaty Central Stand up Club', address: 'ул. Кабанбай батыра, 71' },
-  { city: 'Алматы', name: 'Punch StandUp Club', address: 'ул. Каирбекова, 35а, 3 этаж' },
-  { city: 'Алматы', name: 'Alau Comedy Space', address: 'ул. Толе би, 72' },
-];
+// Площадки — не здесь: каталог площадок загружается `pnpm seed:venues` (apps/api).
 
 // Порядок не менять: от позиции в списке зависит telegram_id профиля.
 const comedianSeeds = [
@@ -92,25 +69,6 @@ const city = (name: string) => {
   return c;
 };
 
-let venuesAdded = 0;
-for (const v of venueSeeds) {
-  const c = city(v.city);
-  const [existing] = await db
-    .select({ id: venues.id })
-    .from(venues)
-    .where(and(eq(venues.name, v.name), eq(venues.cityId, c.id)));
-  if (!existing) {
-    await db.insert(venues).values({
-      name: v.name,
-      address: v.address,
-      cityId: c.id,
-      timezone: c.timezone,
-      status: 'approved',
-    });
-    venuesAdded += 1;
-  }
-}
-
 // Демо-поездки, чтобы в поиске было видно приехавших комиков.
 const demoTrips = new Map<number, { city: string; inDays: number; days: number }>();
 const fromKazakhstan = comedianSeeds.flatMap((s, i) => (s.city === 'Алматы' ? [i] : []));
@@ -152,4 +110,4 @@ for (const [i, comedian] of comedianSeeds.entries()) {
 }
 
 await close();
-console.log(`catalog done: +${venuesAdded} venues, ${comedianSeeds.length} comedians`);
+console.log(`catalog done: ${comedianSeeds.length} comedians`);

@@ -157,3 +157,62 @@ export function groupAfisha<T extends { venueId: string; startsAt: Date }>(
   }
   return result;
 }
+
+export interface CatalogVenueFields<K extends string = string> {
+  name: string;
+  address: string;
+  kind: K | null;
+  capacity: number | null;
+  website: string | null;
+}
+
+/**
+ * Что поменять у уже загруженной площадки по каталогу (только отличающиеся поля).
+ * Площадку из каталога (без автора) — привести к каталогу целиком; добавленную
+ * пользователем — только дозаполнить пустые тип, число мест и сайт, его данные не трогать.
+ */
+export function catalogVenuePatch<K extends string>(
+  existing: CatalogVenueFields<K> & { createdBy: string | null },
+  item: { name: string; address: string; kind: K; capacity?: number; website?: string },
+): Partial<CatalogVenueFields<K>> {
+  const target: CatalogVenueFields<K> =
+    existing.createdBy === null
+      ? {
+          name: item.name,
+          address: item.address,
+          kind: item.kind,
+          capacity: item.capacity ?? existing.capacity,
+          website: item.website ?? existing.website,
+        }
+      : {
+          name: existing.name,
+          address: existing.address,
+          kind: existing.kind ?? item.kind,
+          capacity: existing.capacity ?? item.capacity ?? null,
+          website: existing.website ?? item.website ?? null,
+        };
+  const patch: Partial<CatalogVenueFields<K>> = {};
+  for (const key of ['name', 'address', 'kind', 'capacity', 'website'] as const) {
+    if (target[key] !== existing[key]) Object.assign(patch, { [key]: target[key] });
+  }
+  return patch;
+}
+
+/**
+ * Сайт площадки из поля ввода: пусто — null; без схемы — добавить https://.
+ * undefined — не похоже на адрес сайта (нет точки в домене, не http/https, пробелы).
+ */
+export function normalizeWebsite(value: string): string | null | undefined {
+  const text = value.trim();
+  if (!text) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+  if (!url.hostname.includes('.') || /\s/.test(text)) return undefined;
+  return url.href.replace(/\/$/, '');
+}

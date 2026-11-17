@@ -18,6 +18,7 @@
     "db:migrate": "pnpm --filter @standup/db migrate",
     "seed": "pnpm --filter @standup/db seed",
     "seed:catalog": "pnpm --filter @standup/db seed:catalog",
+    "seed:venues": "pnpm --filter @standup/api seed:venues",
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {

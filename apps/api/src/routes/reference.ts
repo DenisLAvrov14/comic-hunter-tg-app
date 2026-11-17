@@ -2,9 +2,14 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import {
+  countVenuePhotos,
   createVenue,
+  deleteVenuePhoto,
   findCity,
+  findVenuePhoto,
+  insertVenuePhoto,
   listAdminIds,
+  listVenuePhotos,
   findVenue,
   getUserRoles,
   listCities,
@@ -14,9 +19,11 @@ import {
   updateVenueImages,
   type Db,
   type Venue as VenueRow,
+  type VenuePhoto,
 } from '@standup/db';
-import { groupAfisha } from '@standup/domain';
+import { groupAfisha, normalizeWebsite } from '@standup/domain';
 import {
+  PHOTO_LIMIT,
   VenueInput,
   VenuePatch,
   VenuesQuery,
@@ -30,7 +37,12 @@ import { processLogo, processPhoto } from '../images';
 import type { FileStorage } from '../storage';
 import { processImage, readUpload } from '../upload';
 
-export function toVenue(storage: FileStorage, v: VenueRow, userId: string): Venue {
+export function toVenue(
+  storage: FileStorage,
+  v: VenueRow,
+  userId: string,
+  photos: VenuePhoto[] = [],
+): Venue {
   return {
     id: v.id,
     name: v.name,
@@ -38,29 +50,60 @@ export function toVenue(storage: FileStorage, v: VenueRow, userId: string): Venu
     cityId: v.cityId,
     timezone: v.timezone,
     logoUrl: v.logoS3Key ? storage.publicUrl(v.logoS3Key) : null,
-    photo:
-      v.photoS3Key && v.photoPreviewS3Key
-        ? {
-            url: storage.publicUrl(v.photoS3Key),
-            previewUrl: storage.publicUrl(v.photoPreviewS3Key),
-          }
-        : null,
+    photos: photos.map((p) => ({
+      id: p.id,
+      url: storage.publicUrl(p.s3Key),
+      previewUrl: storage.publicUrl(p.previewS3Key),
+    })),
     canEdit: v.createdBy === userId,
     capacity: v.capacity,
     kind: v.kind,
+    website: v.website,
     status: v.status,
     rejectReason: v.rejectReason,
   };
 }
 
+/** Фото площадок, сгруппированные по площадке. */
+export async function venuePhotosById(db: Db, venueIds: string[]) {
+  const byVenue = new Map<string, VenuePhoto[]>();
+  for (const p of await listVenuePhotos(db, venueIds)) {
+    byVenue.set(p.venueId, [...(byVenue.get(p.venueId) ?? []), p]);
+  }
+  return byVenue;
+}
+
+/** Файлы площадки в хранилище: лого и все фото — чтобы удалить вместе с площадкой. */
+export async function venueFileKeys(db: Db, venue: VenueRow): Promise<string[]> {
+  const photos = await listVenuePhotos(db, [venue.id]);
+  return [venue.logoS3Key, ...photos.flatMap((p) => [p.s3Key, p.previewS3Key])].filter(
+    (k): k is string => !!k,
+  );
+}
+
 const VenueParams = z.object({ id: z.string().uuid() });
-const ImageParams = z.object({ id: z.string().uuid(), kind: z.enum(['logo', 'photo']) });
+const PhotoParams = z.object({ id: z.string().uuid(), photoId: z.string().uuid() });
+
+/** Сайт из запроса: undefined — не меняли; ошибка, если не похоже на адрес сайта. */
+function websiteField(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  const website = normalizeWebsite(value ?? '');
+  if (website === undefined) {
+    throw new ApiError('VALIDATION', 'Не похоже на адрес сайта', { field: 'website' });
+  }
+  return website;
+}
 
 export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage }> = async (
   app,
   { db, storage },
 ) => {
   app.addHook('onRequest', app.authenticate);
+
+  /** Площадка с её фото — ответ после изменений. */
+  async function withPhotos(v: VenueRow, userId: string): Promise<Venue> {
+    return toVenue(storage, v, userId, await listVenuePhotos(db, [v.id]));
+  }
 
   app.get('/cities', async (): Promise<City[]> => listCities(db));
 
@@ -69,11 +112,18 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     const rows = await listVenuesByCity(db, city, req.user.sub);
     // Афиша — только у проверенных: на остальных публичных событий нет.
     const approved = rows.filter((r) => r.venue.status === 'approved').map((r) => r.venue.id);
-    const afisha = groupAfisha(await listUpcomingVenueEvents(db, approved, new Date()));
+    const [events, photos] = await Promise.all([
+      listUpcomingVenueEvents(db, approved, new Date()),
+      venuePhotosById(
+        db,
+        rows.map((r) => r.venue.id),
+      ),
+    ]);
+    const afisha = groupAfisha(events);
     return rows.map(({ venue, owner }) => {
       const a = afisha.get(venue.id);
       return {
-        ...toVenue(storage, venue, req.user.sub),
+        ...toVenue(storage, venue, req.user.sub, photos.get(venue.id)),
         owner: owner && {
           name: owner.displayName ?? [owner.firstName, owner.lastName].filter(Boolean).join(' '),
           telegramUsername: owner.telegramUsername,
@@ -99,10 +149,12 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     if (!roles.includes('organizer')) throw new ApiError('FORBIDDEN');
     const city = await findCity(db, body.cityId);
     if (!city) throw new ApiError('VALIDATION', 'Город не найден', { field: 'cityId' });
+    const website = websiteField(body.website) ?? null;
     // Любая новая площадка — на проверку, в том числе от админа (он видит её в очереди сам).
     const venue = await db.transaction(async (tx) => {
       const created = await createVenue(tx, {
         ...body,
+        website,
         timezone: city.timezone,
         createdBy: req.user.sub,
         status: 'pending',
@@ -124,7 +176,7 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     return toVenue(storage, venue, req.user.sub);
   });
 
-  /** Площадка, которую может менять текущий пользователь (тот, кто её добавил). */
+  /** Площадка, которую может менять текущий пользователь (её владелец). */
   async function editableVenue(id: string, userId: string): Promise<VenueRow> {
     const venue = await findVenue(db, id);
     if (!venue) throw new ApiError('NOT_FOUND');
@@ -134,9 +186,15 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
 
   app.patch('/venues/:id', async (req): Promise<Venue> => {
     const { id } = VenueParams.parse(req.params);
-    const patch = VenuePatch.parse(req.body);
+    const { website, ...patch } = VenuePatch.parse(req.body);
     await editableVenue(id, req.user.sub);
-    return toVenue(storage, await updateVenueInfo(db, id, patch), req.user.sub);
+    const normalized = websiteField(website);
+    const updated = await updateVenueInfo(
+      db,
+      id,
+      normalized === undefined ? patch : { ...patch, website: normalized },
+    );
+    return withPhotos(updated, req.user.sub);
   });
 
   async function dropFiles(keys: Array<string | null>) {
@@ -144,49 +202,54 @@ export const referenceRoutes: FastifyPluginAsync<{ db: Db; storage: FileStorage 
     if (existing.length) await storage.delete(existing).catch(() => {});
   }
 
-  // Ключи под photos/ — этот префикс открыт на чтение (см. storage).
-  app.put(
-    '/venues/:id/:kind',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
-    async (req): Promise<Venue> => {
-      const { id, kind } = ImageParams.parse(req.params);
-      const venue = await editableVenue(id, req.user.sub);
-      const input = await readUpload(req);
-      const file = randomUUID();
-      let updated: VenueRow;
-      if (kind === 'logo') {
-        const logo = await processImage(() => processLogo(input));
-        const key = `photos/venues/${id}/${file}_logo.jpg`;
-        await storage.put(key, logo, 'image/jpeg');
-        updated = await updateVenueImages(db, id, { logoS3Key: key });
-        await dropFiles([venue.logoS3Key]);
-      } else {
-        const photo = await processImage(() => processPhoto(input));
-        const key = `photos/venues/${id}/${file}.jpg`;
-        const previewKey = `photos/venues/${id}/${file}_400.jpg`;
-        await storage.put(key, photo.original, 'image/jpeg');
-        await storage.put(previewKey, photo.preview, 'image/jpeg');
-        updated = await updateVenueImages(db, id, {
-          photoS3Key: key,
-          photoPreviewS3Key: previewKey,
-        });
-        await dropFiles([venue.photoS3Key, venue.photoPreviewS3Key]);
-      }
-      return toVenue(storage, updated, req.user.sub);
-    },
-  );
+  const uploadLimit = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
-  app.delete('/venues/:id/:kind', async (req): Promise<Venue> => {
-    const { id, kind } = ImageParams.parse(req.params);
+  // Ключи под photos/ — этот префикс открыт на чтение (см. storage).
+  app.put('/venues/:id/logo', uploadLimit, async (req): Promise<Venue> => {
+    const { id } = VenueParams.parse(req.params);
     const venue = await editableVenue(id, req.user.sub);
-    const updated = await updateVenueImages(
-      db,
-      id,
-      kind === 'logo' ? { logoS3Key: null } : { photoS3Key: null, photoPreviewS3Key: null },
-    );
-    await dropFiles(
-      kind === 'logo' ? [venue.logoS3Key] : [venue.photoS3Key, venue.photoPreviewS3Key],
-    );
-    return toVenue(storage, updated, req.user.sub);
+    const logo = await processImage(async () => processLogo(await readUpload(req)));
+    const key = `photos/venues/${id}/${randomUUID()}_logo.jpg`;
+    await storage.put(key, logo, 'image/jpeg');
+    const updated = await updateVenueImages(db, id, { logoS3Key: key });
+    await dropFiles([venue.logoS3Key]);
+    return withPhotos(updated, req.user.sub);
+  });
+
+  app.delete('/venues/:id/logo', async (req): Promise<Venue> => {
+    const { id } = VenueParams.parse(req.params);
+    const venue = await editableVenue(id, req.user.sub);
+    const updated = await updateVenueImages(db, id, { logoS3Key: null });
+    await dropFiles([venue.logoS3Key]);
+    return withPhotos(updated, req.user.sub);
+  });
+
+  /** Ещё одно фото в галерею площадки (листается в карточке). */
+  app.post('/venues/:id/photos', uploadLimit, async (req, reply): Promise<Venue> => {
+    const { id } = VenueParams.parse(req.params);
+    const venue = await editableVenue(id, req.user.sub);
+    const count = await countVenuePhotos(db, id);
+    if (count >= PHOTO_LIMIT) {
+      throw new ApiError('VALIDATION', `Можно загрузить не больше ${PHOTO_LIMIT} фото`);
+    }
+    const photo = await processImage(async () => processPhoto(await readUpload(req)));
+    const file = randomUUID();
+    const s3Key = `photos/venues/${id}/${file}.jpg`;
+    const previewS3Key = `photos/venues/${id}/${file}_400.jpg`;
+    await storage.put(s3Key, photo.original, 'image/jpeg');
+    await storage.put(previewS3Key, photo.preview, 'image/jpeg');
+    await insertVenuePhoto(db, { venueId: id, s3Key, previewS3Key, sortOrder: count });
+    reply.status(201);
+    return withPhotos(venue, req.user.sub);
+  });
+
+  app.delete('/venues/:id/photos/:photoId', async (req): Promise<Venue> => {
+    const { id, photoId } = PhotoParams.parse(req.params);
+    const venue = await editableVenue(id, req.user.sub);
+    const photo = await findVenuePhoto(db, photoId);
+    if (!photo || photo.venueId !== id) throw new ApiError('NOT_FOUND');
+    await deleteVenuePhoto(db, photoId);
+    await dropFiles([photo.s3Key, photo.previewS3Key]);
+    return withPhotos(venue, req.user.sub);
   });
 };

@@ -7,6 +7,7 @@ export type {
   ComedianPhoto,
   OrganizerProfile,
   Venue,
+  VenuePhoto,
   ProfileLink,
   Event,
   Participation,
@@ -24,4 +25,5 @@ export * from './repositories/calendar';
 export * from './repositories/chats';
 export * from './repositories/account';
 export * from './repositories/admin';
-export { and, eq, inArray, sql } from 'drizzle-orm';
+export { and, eq, exists, inArray, isNull, notExists, sql } from 'drizzle-orm';
+export * from './data/venue-catalog';

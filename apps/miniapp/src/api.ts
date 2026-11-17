@@ -125,13 +125,19 @@ export const api = {
   venues: (cityId: number) => request<VenueListItem[]>('GET', `/venues?city=${cityId}`),
   createVenue: (body: VenueInput) => request<Venue>('POST', '/venues', body),
   patchVenue: (id: string, body: VenuePatch) => request<Venue>('PATCH', `/venues/${id}`, body),
-  uploadVenueImage: (id: string, kind: 'logo' | 'photo', file: File) => {
+  uploadVenueLogo: (id: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return request<Venue>('PUT', `/venues/${id}/${kind}`, form);
+    return request<Venue>('PUT', `/venues/${id}/logo`, form);
   },
-  deleteVenueImage: (id: string, kind: 'logo' | 'photo') =>
-    request<Venue>('DELETE', `/venues/${id}/${kind}`),
+  deleteVenueLogo: (id: string) => request<Venue>('DELETE', `/venues/${id}/logo`),
+  addVenuePhoto: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<Venue>('POST', `/venues/${id}/photos`, form);
+  },
+  deleteVenuePhoto: (id: string, photoId: string) =>
+    request<Venue>('DELETE', `/venues/${id}/photos/${photoId}`),
   map: (q: { city?: number; date: string }) => request<MapEvent[]>('GET', `/map?${query(q)}`),
   badges: () => request<Badges>('GET', '/me/badges'),
   adminVenues: () => request<PendingVenue[]>('GET', '/admin/venues'),
@@ -142,6 +148,8 @@ export const api = {
   searchUsers: (q: string) =>
     request<AdminPerson[]>('GET', `/admin/users?q=${encodeURIComponent(q)}`),
   grantAdmin: (id: string) => request<void>('PUT', `/admin/admins/${id}`),
+  assignVenueOwner: (venueId: string, userId: string) =>
+    request<Venue>('PUT', `/admin/venues/${venueId}/owner`, { userId }),
   revokeAdmin: (id: string) => request<void>('DELETE', `/admin/admins/${id}`),
   grantManage: (id: string) => request<void>('PUT', `/admin/admins/${id}/manage`),
   revokeManage: (id: string) => request<void>('DELETE', `/admin/admins/${id}/manage`),

@@ -173,14 +173,14 @@ export const venues = pgTable(
     timezone: text('timezone').notNull(),
     lat: doublePrecision('lat'),
     lng: doublePrecision('lng'),
-    // Лого (квадрат) и фото площадки; превью фото — для списка.
+    // Лого (квадрат); фото площадки — в venue_photos.
     logoS3Key: text('logo_s3_key'),
-    photoS3Key: text('photo_s3_key'),
-    photoPreviewS3Key: text('photo_preview_s3_key'),
     // Мест в зале; null — не указано.
     capacity: integer('capacity'),
     // Тип площадки; null — у площадок, добавленных до появления поля.
     kind: venueKindEnum('kind'),
+    // Сайт площадки (необязательно), полный URL.
+    website: text('website'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     status: venueStatusEnum('status').notNull().default('pending'),
     reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
@@ -190,6 +190,22 @@ export const venues = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('venues_city_idx').on(t.cityId), index('venues_status_idx').on(t.status)],
+);
+
+// Фото площадки (галерея, листается в карточке); превью — для карточки.
+export const venuePhotos = pgTable(
+  'venue_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    venueId: uuid('venue_id')
+      .notNull()
+      .references(() => venues.id, { onDelete: 'cascade' }),
+    s3Key: text('s3_key').notNull(),
+    previewS3Key: text('preview_s3_key').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('venue_photos_venue_idx').on(t.venueId)],
 );
 
 // tryout — «Проверка», paid — «Платка», concert показывается как «Шоу».
@@ -518,3 +534,5 @@ export type BusySlot = typeof busySlots.$inferSelect;
 export type ScheduledNotification = typeof scheduledNotifications.$inferSelect;
 export type AutoAcceptRuleRow = typeof autoAcceptRules.$inferSelect;
 export type TelegramChat = typeof telegramChats.$inferSelect;
+
+export type VenuePhoto = typeof venuePhotos.$inferSelect;

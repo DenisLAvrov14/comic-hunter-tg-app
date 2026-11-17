@@ -191,6 +191,38 @@ describe.skipIf(!TEST_DATABASE_URL)('API админка (Postgres)', () => {
     expect(await visible(other)).toContain(venue.id);
   });
 
+  it('сайт площадки: необязательный, приводится к https, мусор не принимается', async () => {
+    const res = await org.call('POST', '/venues', {
+      kind: 'bar',
+      capacity: 30,
+      name: `Сайт ${base}`,
+      address: 'ул. 3',
+      cityId: moscow,
+      website: 'example.com/',
+    });
+    const venue = res.json() as Venue;
+    expect(venue.website).toBe('https://example.com');
+    const bad = await org.call('PATCH', `/venues/${venue.id}`, { website: 'не сайт' });
+    expect(bad.statusCode).toBe(400);
+    const cleared = await org.call('PATCH', `/venues/${venue.id}`, { website: '' });
+    expect((cleared.json() as Venue).website).toBeNull();
+  });
+
+  it('админ назначает владельца площадки — тот может её менять', async () => {
+    const venue = await addVenue(org, `Чужая ${base}`);
+    expect((await other.call('PATCH', `/venues/${venue.id}`, { capacity: 5 })).statusCode).toBe(
+      403,
+    );
+    const body = { userId: other.userId };
+    expect((await org.call('PUT', `/admin/venues/${venue.id}/owner`, body)).statusCode).toBe(404);
+    const res = await admin.call('PUT', `/admin/venues/${venue.id}/owner`, body);
+    expect(res.statusCode).toBe(200);
+    expect((await other.call('PATCH', `/venues/${venue.id}`, { capacity: 5 })).statusCode).toBe(
+      200,
+    );
+    expect((await org.call('PATCH', `/venues/${venue.id}`, { capacity: 6 })).statusCode).toBe(403);
+  });
+
   it('главный назначает админов, обычный админ — нет', async () => {
     expect((await admin.call('GET', '/me')).json().canManageAdmins).toBe(true);
     const found = (

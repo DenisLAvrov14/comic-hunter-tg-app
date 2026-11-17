@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ru, type Venue, type VenueListItem } from '@standup/shared';
 import { dayLabel, formatTime } from './format';
+import { Lightbox } from './lightbox';
 import { openExternal, openTelegramProfile } from './telegram';
 
 const v = ru.app.venues;
@@ -171,6 +172,94 @@ function OwnerLine({ owner }: { owner: NonNullable<VenueListItem['owner']> }) {
   );
 }
 
+/** Картинки карточки: фото по порядку; без фото — лого. preview — в карточке, full — на весь экран. */
+function venueSlides(venue: Venue) {
+  if (venue.photos.length > 0) {
+    return venue.photos.map((p) => ({ preview: p.previewUrl, full: p.url }));
+  }
+  return venue.logoUrl ? [{ preview: venue.logoUrl, full: venue.logoUrl }] : [];
+}
+
+/** Слайдер в карточке: листается вбок, точки показывают, какое фото открыто. */
+function MediaSlider({
+  slides,
+  onOpen,
+}: {
+  slides: Array<{ preview: string }>;
+  onOpen: (index: number) => void;
+}) {
+  const [index, setIndex] = useState(0);
+  return (
+    <>
+      <div
+        className="venue-slider"
+        onScroll={(e) =>
+          setIndex(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))
+        }
+      >
+        {slides.map((s, i) => (
+          <button
+            key={`${i}-${s.preview}`}
+            type="button"
+            className="venue-slide"
+            aria-label={v.openPhoto}
+            onClick={() => onOpen(i)}
+          >
+            <img src={s.preview} alt="" loading="lazy" />
+          </button>
+        ))}
+      </div>
+      {slides.length > 1 && (
+        <span className="venue-slider-dots" aria-hidden="true">
+          {slides.map((s, i) => (
+            <i key={`${i}-${s.preview}`} className={i === index ? 'active' : undefined} />
+          ))}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Галерея в раскрытой карточке; у владельца — ✕ на фото и кнопка «добавить». */
+function Gallery({
+  venue,
+  onOpen,
+  onRemove,
+  add,
+}: {
+  venue: Venue;
+  onOpen: (index: number) => void;
+  onRemove?: (photoId: string) => void;
+  add?: ReactNode;
+}) {
+  if (venue.photos.length === 0 && !add) return null;
+  return (
+    <div className="venue-gallery">
+      <span className="hint">{v.photos}</span>
+      <div className="venue-gallery-grid">
+        {venue.photos.map((p, i) => (
+          <div key={p.id} className="venue-gallery-item">
+            <button type="button" aria-label={v.openPhoto} onClick={() => onOpen(i)}>
+              <img src={p.previewUrl} alt="" loading="lazy" />
+            </button>
+            {onRemove && (
+              <button
+                type="button"
+                className="venue-tile-remove"
+                aria-label={v.removePhoto}
+                onClick={() => onRemove(p.id)}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        {add}
+      </div>
+    </div>
+  );
+}
+
 export function VenueCard({
   venue,
   cityName,
@@ -179,6 +268,8 @@ export function VenueCard({
   afisha,
   owner,
   tiles,
+  details,
+  gallery,
   children,
 }: {
   venue: Venue;
@@ -193,14 +284,24 @@ export function VenueCard({
   onCapacity?: () => void;
   /** Плитки действий внизу (лого и фото у своей площадки). */
   tiles?: ReactNode;
+  /** Дополнительно в раскрытой карточке (например, назначение владельца для админа). */
+  details?: ReactNode;
+  /** Владелец: удалить фото и кнопка «добавить» в галерее раскрытой карточки. */
+  gallery?: { onRemove: (photoId: string) => void; add?: ReactNode };
   children?: ReactNode;
 }) {
-  const image = venue.photo?.previewUrl ?? venue.logoUrl;
+  const [open, setOpen] = useState(false);
+  // Открытая на весь экран картинка: список и с какой начать.
+  const [viewer, setViewer] = useState<{ images: string[]; start: number } | null>(null);
+  const slides = venueSlides(venue);
+  const openSlides = (start: number) => setViewer({ images: slides.map((s) => s.full), start });
+  const openPhotos = (start: number) =>
+    setViewer({ images: venue.photos.map((p) => p.url), start });
   const status = venue.status === 'approved' ? null : venue.status;
   const media = (
     <>
-      {image ? (
-        <img className="venue-card-image" src={image} alt="" loading="lazy" />
+      {slides.length > 0 ? (
+        <MediaSlider slides={slides} onOpen={openSlides} />
       ) : (
         <span className="venue-card-placeholder">
           <VenueIconSvg name="mic" />
@@ -212,8 +313,15 @@ export function VenueCard({
           {status === 'rejected' ? v.rejected : v.pending}
         </span>
       )}
-      {venue.photo && venue.logoUrl && (
-        <img className="venue-card-avatar" src={venue.logoUrl} alt="" loading="lazy" />
+      {venue.photos.length > 0 && venue.logoUrl && (
+        <button
+          type="button"
+          className="venue-card-avatar"
+          aria-label={v.logo}
+          onClick={() => setViewer({ images: [venue.logoUrl!], start: 0 })}
+        >
+          <img src={venue.logoUrl} alt="" loading="lazy" />
+        </button>
       )}
     </>
   );
@@ -221,13 +329,7 @@ export function VenueCard({
   return (
     <section className="venue-card">
       <div className="venue-card-top">
-        {venue.photo ? (
-          <a className="venue-card-media" href={venue.photo.url} target="_blank" rel="noreferrer">
-            {media}
-          </a>
-        ) : (
-          <div className="venue-card-media">{media}</div>
-        )}
+        <div className="venue-card-media">{media}</div>
         <div className="venue-card-info">
           <h3 className="venue-card-name">{venue.name}</h3>
           {cityName && <span className="venue-card-city">{cityName}</span>}
@@ -269,6 +371,43 @@ export function VenueCard({
       {tiles && <div className="venue-card-tiles">{tiles}</div>}
 
       {children}
+
+      {open && (
+        <div className="venue-card-details">
+          <div className="venue-card-detail">
+            <span className="hint">{v.website}</span>
+            {venue.website ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => openExternal(venue.website!)}
+              >
+                {venue.website.replace(/^https?:\/\/(www\.)?/, '')} ↗
+              </button>
+            ) : (
+              <span className="hint">{v.websiteNone}</span>
+            )}
+          </div>
+          <Gallery
+            venue={venue}
+            onOpen={openPhotos}
+            onRemove={gallery?.onRemove}
+            add={gallery?.add}
+          />
+          {details}
+        </div>
+      )}
+      {viewer && (
+        <Lightbox images={viewer.images} start={viewer.start} onClose={() => setViewer(null)} />
+      )}
+      <button
+        type="button"
+        className="link-button venue-card-more"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? `${v.less} ▴` : `${v.more} ▾`}
+      </button>
     </section>
   );
 }

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  PHOTO_LIMIT,
   PHOTO_MAX_BYTES,
   VENUE_CAPACITY_MAX,
   ru,
   venueKinds,
+  type AdminPerson,
   type Venue,
   type VenueKind,
   type VenueListItem,
@@ -27,7 +29,6 @@ import { VenueCard, VenueTile } from '../venue-card';
 
 const t = ru.app;
 const v = t.venues;
-type ImageKind = 'logo' | 'photo';
 
 export function VenuesScreen() {
   const { me } = useMe();
@@ -51,6 +52,7 @@ export function VenuesScreen() {
 }
 
 function VenueList({ cityId }: { cityId: number }) {
+  const { me } = useMe();
   const cities = useCities();
   const cityName = cities.data?.find((c) => c.id === cityId)?.name;
   const { data, error, isPending } = useQuery({
@@ -62,9 +64,17 @@ function VenueList({ cityId }: { cityId: number }) {
   if (data.length === 0) return <p className="hint">{v.empty}</p>;
   return (
     <div className="list">
-      {data.map((venue) =>
-        venue.canEdit ? (
-          <OwnVenueCard key={venue.id} venue={venue} cityId={cityId} cityName={cityName} />
+      {data.map((venue) => {
+        // Админ может назначить реального владельца (например, площадке из каталога).
+        const details = me.isAdmin ? <OwnerAssign venue={venue} cityId={cityId} /> : undefined;
+        return venue.canEdit ? (
+          <OwnVenueCard
+            key={venue.id}
+            venue={venue}
+            cityId={cityId}
+            cityName={cityName}
+            details={details}
+          />
         ) : (
           <VenueCard
             key={venue.id}
@@ -72,9 +82,10 @@ function VenueList({ cityId }: { cityId: number }) {
             cityName={cityName}
             afisha={venue.afisha}
             owner={venue.owner}
+            details={details}
           />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -121,26 +132,42 @@ function OwnVenueCard({
   venue,
   cityId,
   cityName,
+  details,
 }: {
   venue: VenueListItem;
   cityId: number;
   cityName?: string;
+  details?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const [kind, setKind] = useState<VenueKind | null>(venue.kind);
+  const [website, setWebsite] = useState('');
   const startEdit = () => {
     setValue(venue.capacity ? String(venue.capacity) : '');
     setKind(venue.kind);
+    setWebsite(venue.website ?? '');
     save.reset();
     setEditing(true);
   };
+  const removePhoto = useMutation({
+    mutationFn: (photoId: string) => api.deleteVenuePhoto(venue.id, photoId),
+    onSuccess: () => {
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey: ['venues', cityId] });
+    },
+    onError: () => haptic('error'),
+  });
   const save = useMutation({
     mutationFn: async () => {
       const capacity = parseCapacity(value);
       if (capacity === undefined) throw new Error(v.capacityInvalid);
-      return api.patchVenue(venue.id, { capacity, ...(kind ? { kind } : {}) });
+      return api.patchVenue(venue.id, {
+        capacity,
+        website: website.trim() || null,
+        ...(kind ? { kind } : {}),
+      });
     },
     onSuccess: () => {
       haptic('success');
@@ -154,11 +181,18 @@ function OwnVenueCard({
       venue={venue}
       cityName={cityName}
       afisha={venue.afisha}
+      details={details}
+      gallery={{
+        onRemove: (photoId) => {
+          if (window.confirm(v.removePhotoConfirm)) removePhoto.mutate(photoId);
+        },
+        add: <AddPhotoCell venue={venue} cityId={cityId} />,
+      }}
       onCapacity={startEdit}
       tiles={
         <>
-          <ImageTile venue={venue} cityId={cityId} kind="logo" />
-          <ImageTile venue={venue} cityId={cityId} kind="photo" />
+          <LogoTile venue={venue} cityId={cityId} />
+          <PhotoTile venue={venue} cityId={cityId} />
           <VenueTile icon="edit" label={v.edit} onClick={startEdit} />
         </>
       }
@@ -172,6 +206,13 @@ function OwnVenueCard({
             onChange={setValue}
             inputMode="numeric"
             hint={v.capacityHint}
+          />
+          <TextField
+            label={v.website}
+            value={website}
+            onChange={setWebsite}
+            placeholder={v.websiteHint}
+            optional
           />
           <ErrorText error={save.error} />
           <div className="action-bar">
@@ -188,26 +229,107 @@ function OwnVenueCard({
   );
 }
 
-/** Плитка «Лого» / «Фото» у своей площадки: загрузить, заменить, убрать (✕ в углу). */
-function ImageTile({ venue, cityId, kind }: { venue: Venue; cityId: number; kind: ImageKind }) {
+/** Добавить фото в галерею своей площадки: скрытый выбор файла и загрузка. */
+function useAddPhoto(venue: Venue, cityId: number) {
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
-  const has = kind === 'logo' ? !!venue.logoUrl : !!venue.photo;
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      if (file.size > PHOTO_MAX_BYTES) throw new Error(v.tooLarge);
+      return api.addVenuePhoto(venue.id, file);
+    },
+    onSuccess: () => {
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey: ['venues', cityId] });
+    },
+    onError: () => haptic('error'),
+  });
+  const full = venue.photos.length >= PHOTO_LIMIT;
+  const element = (
+    <input
+      ref={input}
+      type="file"
+      accept="image/*"
+      hidden
+      onChange={(e) => {
+        const file = pickFile(e);
+        if (file) upload.mutate(file);
+      }}
+    />
+  );
+  return { element, pick: () => input.current?.click(), upload, full };
+}
+
+/** Плитка «Фото»: добавить ещё фото в галерею (листается в карточке). */
+function PhotoTile({ venue, cityId }: { venue: Venue; cityId: number }) {
+  const add = useAddPhoto(venue, cityId);
+  const error = add.upload.error;
+  return (
+    <>
+      {add.element}
+      <VenueTile
+        icon="photo"
+        label={
+          error
+            ? error instanceof Error
+              ? error.message
+              : v.uploadFailed
+            : add.upload.isPending
+              ? v.uploading
+              : add.full
+                ? v.photoLimit(PHOTO_LIMIT)
+                : venue.photos.length
+                  ? `${v.photoShort} · ${venue.photos.length}`
+                  : v.addPhoto
+        }
+        disabled={add.upload.isPending || add.full}
+        onClick={add.pick}
+      />
+    </>
+  );
+}
+
+/** «+» в галерее раскрытой карточки — то же добавление фото. */
+function AddPhotoCell({ venue, cityId }: { venue: Venue; cityId: number }) {
+  const add = useAddPhoto(venue, cityId);
+  if (add.full) return null;
+  return (
+    <>
+      {add.element}
+      <button
+        type="button"
+        className="venue-gallery-add"
+        aria-label={v.addPhoto}
+        disabled={add.upload.isPending}
+        onClick={add.pick}
+      >
+        {add.upload.isPending ? '…' : '+'}
+      </button>
+    </>
+  );
+}
+
+/** Плитка «Лого» у своей площадки: загрузить, заменить, убрать (✕ в углу). */
+function LogoTile({ venue, cityId }: { venue: Venue; cityId: number }) {
+  const queryClient = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
   const done = () => {
     haptic('success');
     void queryClient.invalidateQueries({ queryKey: ['venues', cityId] });
   };
   const upload = useMutation({
-    mutationFn: (file: File) => api.uploadVenueImage(venue.id, kind, file),
+    mutationFn: (file: File) => {
+      if (file.size > PHOTO_MAX_BYTES) throw new Error(v.tooLarge);
+      return api.uploadVenueLogo(venue.id, file);
+    },
     onSuccess: done,
     onError: () => haptic('error'),
   });
   const remove = useMutation({
-    mutationFn: () => api.deleteVenueImage(venue.id, kind),
+    mutationFn: () => api.deleteVenueLogo(venue.id),
     onSuccess: done,
     onError: () => haptic('error'),
   });
-  const label = kind === 'logo' ? v.logo : v.photoShort;
   const busy = upload.isPending || remove.isPending;
   const error = upload.error ?? remove.error;
   return (
@@ -223,7 +345,7 @@ function ImageTile({ venue, cityId, kind }: { venue: Venue; cityId: number; kind
         }}
       />
       <VenueTile
-        icon={kind === 'logo' ? 'logo' : 'photo'}
+        icon="logo"
         label={
           error
             ? error instanceof Error
@@ -231,16 +353,16 @@ function ImageTile({ venue, cityId, kind }: { venue: Venue; cityId: number; kind
               : v.uploadFailed
             : upload.isPending
               ? v.uploading
-              : label
+              : v.logo
         }
         disabled={busy}
         onClick={() => input.current?.click()}
         corner={
-          has && (
+          venue.logoUrl && (
             <button
               type="button"
               className="venue-tile-remove"
-              aria-label={`${label}: ${v.remove}`}
+              aria-label={`${v.logo}: ${v.remove}`}
               disabled={busy}
               onClick={() => remove.mutate()}
             >
@@ -320,6 +442,7 @@ function NewVenue({ cityId }: { cityId: number }) {
   const [address, setAddress] = useState('');
   const [capacity, setCapacity] = useState('');
   const [kind, setKind] = useState<VenueKind | null>(null);
+  const [website, setWebsite] = useState('');
   const [logo, setLogo] = useState<File | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
   // Название только что добавленной площадки — для сообщения об успехе.
@@ -337,10 +460,11 @@ function NewVenue({ cityId }: { cityId: number }) {
         cityId,
         capacity: seats,
         kind: kind!,
+        website: website.trim() || null,
       });
       // Площадка уже создана: картинки догружаются, ошибка загрузки её не отменяет.
-      if (logo) await api.uploadVenueImage(venue.id, 'logo', logo);
-      if (photo) await api.uploadVenueImage(venue.id, 'photo', photo);
+      if (logo) await api.uploadVenueLogo(venue.id, logo);
+      if (photo) await api.addVenuePhoto(venue.id, photo);
       return venue;
     },
     onSuccess: (venue) => {
@@ -350,6 +474,7 @@ function NewVenue({ cityId }: { cityId: number }) {
       setAddress('');
       setCapacity('');
       setKind(null);
+      setWebsite('');
       setLogo(null);
       setPhoto(null);
       haptic('success');
@@ -394,6 +519,13 @@ function NewVenue({ cityId }: { cityId: number }) {
         hint={v.capacityHint}
         invalid={required.isMissing(v.capacityField)}
       />
+      <TextField
+        label={v.website}
+        value={website}
+        onChange={change(setWebsite)}
+        placeholder={v.websiteHint}
+        optional
+      />
       <FilePick label={v.logo} hint={v.logoHint} file={logo} onChange={setLogo} round />
       <FilePick label={v.photo} file={photo} onChange={setPhoto} />
       <MissingText missing={required.missing} />
@@ -403,5 +535,90 @@ function NewVenue({ cityId }: { cityId: number }) {
         {create.isPending ? v.uploading : t.add}
       </button>
     </section>
+  );
+}
+
+/** Как назвать человека: @ник, если есть, иначе имя. */
+function personName(p: { name: string; telegramUsername: string | null }) {
+  return p.telegramUsername ? `@${p.telegramUsername}` : p.name;
+}
+
+/** Для админа: текущий владелец площадки и назначение другого (поиск по имени или @нику). */
+function OwnerAssign({ venue, cityId }: { venue: VenueListItem; cityId: number }) {
+  const queryClient = useQueryClient();
+  const [searching, setSearching] = useState(false);
+  const [q, setQ] = useState('');
+  const [done, setDone] = useState<string | null>(null);
+  const query = q.trim();
+  const found = useQuery({
+    queryKey: ['admin', 'users', query],
+    queryFn: () => api.searchUsers(query),
+    enabled: searching && query.length >= 2,
+  });
+  const assign = useMutation({
+    mutationFn: (p: AdminPerson) => api.assignVenueOwner(venue.id, p.id),
+    onSuccess: (_, p) => {
+      haptic('success');
+      setDone(v.ownerDone(personName(p)));
+      setSearching(false);
+      setQ('');
+      void queryClient.invalidateQueries({ queryKey: ['venues', cityId] });
+    },
+    onError: () => haptic('error'),
+  });
+  const current = venue.canEdit ? t.admin.you : venue.owner ? personName(venue.owner) : v.ownerNone;
+  return (
+    <div className="stack">
+      <div className="venue-card-detail">
+        <span className="hint">{v.owner}</span>
+        <span>{current}</span>
+      </div>
+      {done && <p className="success">{done}</p>}
+      {searching ? (
+        <>
+          <TextField label={v.ownerSearch} value={q} onChange={setQ} />
+          {query.length >= 2 &&
+            (found.isPending ? (
+              <p className="hint">{t.loading}</p>
+            ) : found.data?.length === 0 ? (
+              <p className="hint">{t.admin.searchEmpty}</p>
+            ) : (
+              found.data?.map((p) => (
+                <div key={p.id} className="row">
+                  <span className="grow stack-tight">
+                    <span>{personName(p)}</span>
+                    {p.telegramUsername && <span className="hint">{p.name}</span>}
+                  </span>
+                  <button
+                    className="secondary"
+                    disabled={assign.isPending}
+                    onClick={() => {
+                      if (window.confirm(v.ownerConfirm(personName(p), venue.name))) {
+                        assign.mutate(p);
+                      }
+                    }}
+                  >
+                    {t.admin.grant}
+                  </button>
+                </div>
+              ))
+            ))}
+          <ErrorText error={found.error ?? assign.error} />
+          <button className="secondary" onClick={() => setSearching(false)}>
+            {v.cancel}
+          </button>
+        </>
+      ) : (
+        <button
+          className="secondary"
+          onClick={() => {
+            setDone(null);
+            setSearching(true);
+          }}
+        >
+          {venue.owner || venue.canEdit ? v.ownerChange : v.ownerAssign}
+        </button>
+      )}
+    </div>
   );
 }

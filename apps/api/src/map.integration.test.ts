@@ -254,8 +254,15 @@ describe.skipIf(!TEST_DATABASE_URL)('API карта, счётчики, площ�
     const venue = res.json();
     expect(venue.canEdit).toBe(true);
     expect(venue.logoUrl).toMatch(/^\/media\/photos\/venues\//);
-    const photo = (await org.upload('PUT', `/venues/${venueId}/photo`, png)).json();
-    expect(photo.photo.previewUrl).toMatch(/_400\.jpg$/);
+    // Фото — галерея: добавляются по одному, удаляются по отдельности.
+    expect((await b.upload('POST', `/venues/${venueId}/photos`, png)).statusCode).toBe(403);
+    const added = await org.upload('POST', `/venues/${venueId}/photos`, png);
+    expect(added.statusCode).toBe(201);
+    expect(added.json().photos[0].previewUrl).toMatch(/_400\.jpg$/);
+    const two = (await org.upload('POST', `/venues/${venueId}/photos`, png)).json();
+    expect(two.photos).toHaveLength(2);
+    const left = (await org.call('DELETE', `/venues/${venueId}/photos/${two.photos[0].id}`)).json();
+    expect(left.photos.map((p: { id: string }) => p.id)).toEqual([two.photos[1].id]);
 
     const row = (
       await ctx.db.select().from(schema.venues).where(eq(schema.venues.id, venueId))
@@ -274,6 +281,6 @@ describe.skipIf(!TEST_DATABASE_URL)('API карта, счётчики, площ�
 
     const cleared = (await org.call('DELETE', `/venues/${venueId}/logo`)).json();
     expect(cleared.logoUrl).toBeNull();
-    expect(cleared.photo).not.toBeNull();
+    expect(cleared.photos).toHaveLength(1);
   });
 });

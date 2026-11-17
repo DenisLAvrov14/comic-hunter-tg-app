@@ -179,3 +179,13 @@ export async function setAdminRights(
   const [row] = await db.update(users).set(rights).where(eq(users.id, userId)).returning();
   return row!;
 }
+
+/** Владелец площадки: может менять её данные, лого и фото. */
+export async function setVenueOwner(db: DbOrTx, venueId: string, userId: string): Promise<Venue> {
+  const [row] = await db
+    .update(venues)
+    .set({ createdBy: userId })
+    .where(eq(venues.id, venueId))
+    .returning();
+  return row!;
+}

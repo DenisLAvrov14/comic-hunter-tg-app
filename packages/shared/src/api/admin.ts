@@ -41,3 +41,7 @@ export const AdminUsersQuery = z.object({
 });
 
 export const AdminUserParams = z.object({ id: z.string().uuid() });
+
+/** Назначить владельца площадки (например, реального владельца площадки из каталога). */
+export const AssignVenueOwnerRequest = z.object({ userId: z.string().uuid() });
+export type AssignVenueOwnerRequest = z.infer<typeof AssignVenueOwnerRequest>;

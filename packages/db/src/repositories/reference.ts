@@ -1,8 +1,18 @@
-import { and, asc, eq, gte, inArray, or } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, or } from 'drizzle-orm';
 import type { Db } from '../client';
 import type { DbOrTx } from './events';
 import { CITIES } from '../data/cities';
-import { cities, events, organizerProfiles, users, venues, type City, type Venue } from '../schema';
+import {
+  cities,
+  events,
+  organizerProfiles,
+  users,
+  venuePhotos,
+  venues,
+  type City,
+  type Venue,
+  type VenuePhoto,
+} from '../schema';
 
 /** Справочник городов — идемпотентно, вызывается после миграций. */
 export async function syncCities(db: Db) {
@@ -95,7 +105,7 @@ export async function findVenue(db: DbOrTx, id: string): Promise<Venue | undefin
 export async function updateVenueImages(
   db: Db,
   id: string,
-  patch: Partial<Pick<Venue, 'logoS3Key' | 'photoS3Key' | 'photoPreviewS3Key'>>,
+  patch: Partial<Pick<Venue, 'logoS3Key'>>,
 ): Promise<Venue> {
   const [row] = await db.update(venues).set(patch).where(eq(venues.id, id)).returning();
   return row!;
@@ -105,7 +115,7 @@ export async function updateVenueImages(
 export async function updateVenueInfo(
   db: DbOrTx,
   id: string,
-  patch: { capacity?: number | null; kind?: Venue['kind'] },
+  patch: { capacity?: number | null; kind?: Venue['kind']; website?: string | null },
 ): Promise<Venue> {
   const [row] = await db.update(venues).set(patch).where(eq(venues.id, id)).returning();
   return row!;
@@ -121,10 +131,46 @@ export async function createVenue(
     createdBy: string;
     capacity?: number | null;
     kind?: Venue['kind'];
+    website?: string | null;
     /** По умолчанию — на проверке; сиды создают сразу проверенные. */
     status?: Venue['status'];
   },
 ): Promise<Venue> {
   const [row] = await db.insert(venues).values(input).returning();
   return row!;
+}
+
+/** Фото площадок по порядку — для карточек. */
+export function listVenuePhotos(db: DbOrTx, venueIds: string[]): Promise<VenuePhoto[]> {
+  if (venueIds.length === 0) return Promise.resolve([]);
+  return db
+    .select()
+    .from(venuePhotos)
+    .where(inArray(venuePhotos.venueId, venueIds))
+    .orderBy(asc(venuePhotos.sortOrder), asc(venuePhotos.createdAt));
+}
+
+export async function countVenuePhotos(db: DbOrTx, venueId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(venuePhotos)
+    .where(eq(venuePhotos.venueId, venueId));
+  return row?.n ?? 0;
+}
+
+export async function insertVenuePhoto(
+  db: DbOrTx,
+  data: Omit<typeof venuePhotos.$inferInsert, 'createdAt'>,
+): Promise<VenuePhoto> {
+  const [row] = await db.insert(venuePhotos).values(data).returning();
+  return row!;
+}
+
+export async function findVenuePhoto(db: DbOrTx, id: string): Promise<VenuePhoto | undefined> {
+  const [row] = await db.select().from(venuePhotos).where(eq(venuePhotos.id, id));
+  return row;
+}
+
+export async function deleteVenuePhoto(db: DbOrTx, id: string) {
+  await db.delete(venuePhotos).where(eq(venuePhotos.id, id));
 }

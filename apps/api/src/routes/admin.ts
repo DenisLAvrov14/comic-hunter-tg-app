@@ -8,6 +8,7 @@ import {
   listPendingVenues,
   searchUsers,
   setAdminRights,
+  setVenueOwner,
   setVenueReview,
   type Db,
   type PersonRow,
@@ -23,9 +24,11 @@ import {
 import {
   AdminUserParams,
   AdminUsersQuery,
+  AssignVenueOwnerRequest,
   RejectVenueRequest,
   type AdminPerson,
   type PendingVenue,
+  type Venue,
   type VenueReviewResult,
 } from '@standup/shared';
 import { upsertNotification } from '@standup/notify';
@@ -33,7 +36,7 @@ import { z } from 'zod';
 import { ApiError } from '../errors';
 import type { Config } from '../config';
 import type { FileStorage } from '../storage';
-import { toVenue } from './reference';
+import { toVenue, venueFileKeys, venuePhotosById } from './reference';
 
 const VenueParams = z.object({ id: z.string().uuid() });
 
@@ -71,14 +74,19 @@ export const adminRoutes: FastifyPluginAsync<{
     if (!user?.isAdmin) throw new ApiError('NOT_FOUND');
   });
 
-  app.get('/admin/venues', async (req): Promise<PendingVenue[]> =>
-    (await listPendingVenues(db)).map((r) => ({
-      venue: toVenue(storage, r.venue, req.user.sub),
+  app.get('/admin/venues', async (req): Promise<PendingVenue[]> => {
+    const rows = await listPendingVenues(db);
+    const photos = await venuePhotosById(
+      db,
+      rows.map((r) => r.venue.id),
+    );
+    return rows.map((r) => ({
+      venue: toVenue(storage, r.venue, req.user.sub, photos.get(r.venue.id)),
       cityName: r.cityName,
       author: r.author ? toPerson(r.author) : null,
       createdAt: r.venue.createdAt.toISOString(),
-    })),
-  );
+    }));
+  });
 
   async function review(
     adminId: string,
@@ -87,7 +95,10 @@ export const adminRoutes: FastifyPluginAsync<{
     reason: string | null,
   ): Promise<VenueReviewResult> {
     const now = new Date();
-    const { outcome, venue } = await db.transaction(async (tx) => {
+    // Файлы — до транзакции: при удалении площадки фото удаляются каскадом.
+    const existing = await findVenue(db, venueId);
+    const files = existing ? await venueFileKeys(db, existing) : [];
+    const { outcome } = await db.transaction(async (tx) => {
       const venue = await findVenue(tx, venueId);
       if (!venue) throw new ApiError('NOT_FOUND');
       const outcome = reviewVenue(venue.status, action, await countVenueEvents(tx, venueId));
@@ -116,10 +127,8 @@ export const adminRoutes: FastifyPluginAsync<{
       }
       return { outcome, venue };
     });
-    if (outcome.kind === 'deleted') {
-      const keys = [venue.logoS3Key, venue.photoS3Key, venue.photoPreviewS3Key];
-      const existing = keys.filter((k): k is string => !!k);
-      if (existing.length) await storage.delete(existing).catch(() => {});
+    if (outcome.kind === 'deleted' && files.length) {
+      await storage.delete(files).catch(() => {});
     }
     return { result: outcome.kind };
   }
@@ -133,6 +142,18 @@ export const adminRoutes: FastifyPluginAsync<{
     const { id } = VenueParams.parse(req.params);
     const { reason } = RejectVenueRequest.parse(req.body ?? {});
     return review(req.user.sub, id, 'reject', reason || null);
+  });
+
+  app.put('/admin/venues/:id/owner', async (req): Promise<Venue> => {
+    const { id } = VenueParams.parse(req.params);
+    const { userId } = AssignVenueOwnerRequest.parse(req.body);
+    if (!(await findVenue(db, id))) throw new ApiError('NOT_FOUND');
+    const user = await findUserById(db, userId);
+    if (!user || user.deletedAt) {
+      throw new ApiError('VALIDATION', 'Пользователь не найден', { field: 'userId' });
+    }
+    const venue = await setVenueOwner(db, id, userId);
+    return toVenue(storage, venue, req.user.sub, (await venuePhotosById(db, [id])).get(id));
   });
 
   app.get('/admin/admins', async (): Promise<AdminPerson[]> =>
