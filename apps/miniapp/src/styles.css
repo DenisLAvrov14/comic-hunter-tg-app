@@ -1431,7 +1431,9 @@ button.venue-slide {
   bottom: 0;
   padding: 18px 6px 8px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
+  /* Буквы не слипаются на фото. */
+  letter-spacing: 0.05em;
   /* Та же строка внизу, что у «340+» и «На карте»: высота 22px, отступ снизу 8px. */
   line-height: 22px;
   text-align: center;
