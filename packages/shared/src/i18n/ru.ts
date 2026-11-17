@@ -211,7 +211,6 @@ export const ru = {
         `Сделать ${person} владельцем «${venue}»? Он сможет менять данные, лого и фото площадки.`,
       ownerDone: (person: string) => `Владелец назначен: ${person}`,
       capacity: 'Мест',
-      hallsCount: (n: number) => `${n} ${n >= 2 && n <= 4 ? 'зала' : 'залов'}`,
       hallSeats: (n: number) => `${n}+ мест`,
       halls: 'Залы',
       hallName: 'Название зала',

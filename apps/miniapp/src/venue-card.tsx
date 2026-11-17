@@ -93,14 +93,8 @@ function Stat({
 /** «140+»: места всегда с плюсом — сколько вмещает зал, бывает и больше. */
 export const seats = (n: number) => `${n}+`;
 
-/** Плашка «Мест»: всего мест; при нескольких залах подпись «2 зала», каждый — в «Подробнее». */
+/** Плашка «Мест»: всего мест (при нескольких залах — сумма, залы — в «Подробнее»). */
 function capacityStat(venue: Venue, editable: boolean) {
-  if (venue.halls.length > 1) {
-    return {
-      label: v.hallsCount(venue.halls.length),
-      value: seats(venue.capacity ?? 0),
-    };
-  }
   return {
     label: v.capacity,
     value: venue.capacity ? seats(venue.capacity) : editable ? v.setCapacity : '—',
@@ -350,10 +344,7 @@ export function VenueCard({
         <div className="venue-card-info">
           <h3 className="venue-card-name">{venue.name}</h3>
           {cityName && <span className="venue-card-city">{cityName}</span>}
-          <span className="venue-card-address">
-            <VenueIconSvg name="pin" />
-            <span>{venue.address}</span>
-          </span>
+          <span className="venue-card-address">{venue.address}</span>
           <div className="venue-stats">
             <Stat icon="seat" {...capacityStat(venue, !!onCapacity)} onClick={onCapacity} />
             <button
@@ -419,17 +410,15 @@ export function VenueCard({
       {viewer && (
         <Lightbox images={viewer.images} start={viewer.start} onClose={() => setViewer(null)} />
       )}
-      <div className="venue-card-footer">
-        {owner && !venue.canEdit ? <OwnerLine owner={owner} /> : <span />}
-        <button
-          type="button"
-          className="link-button venue-card-more"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          {open ? `${v.less} ▴` : `${v.more} ▾`}
-        </button>
-      </div>
+      {owner && !venue.canEdit && <OwnerLine owner={owner} />}
+      <button
+        type="button"
+        className="link-button venue-card-more"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? `${v.less} ▴` : `${v.more} ▾`}
+      </button>
     </section>
   );
 }
