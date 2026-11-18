@@ -261,7 +261,6 @@ export function createBot(config: BotConfig, db: Db, log: Logger) {
         ? {
             stageName: comedian.stageName,
             city: await cityName(comedian.cityId),
-            category: ru.app.categories[comedian.category],
             contact: comedian.contact,
             bio: comedian.bio,
             links: comedian.links.map((l) => ({ label: ru.app.linkTypes[l.type], url: l.url })),

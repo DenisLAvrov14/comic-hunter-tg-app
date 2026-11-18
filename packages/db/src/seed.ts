@@ -76,7 +76,6 @@ const stageNames = [
   'Бекзат Ок',
   'Женя Край',
 ];
-const categories = ['newbie', 'experienced', 'media'] as const;
 
 for (const [i, stageName] of stageNames.entries()) {
   const telegramId = 200001 + i;
@@ -91,8 +90,6 @@ for (const [i, stageName] of stageNames.entries()) {
     stageName,
     cityId: city(cityName).id,
     contact: `@comic_${telegramId}`,
-    // Примерно: половина новичков, треть опытных, остальные медийные.
-    category: categories[i % 6 === 5 ? 2 : i % 2],
     bio: i % 3 === 0 ? 'Пишу про семью, работу и метро.' : null,
     links:
       i % 2 === 0

@@ -215,7 +215,7 @@ describe.skipIf(!url)('API профили и справочники (Postgres)',
     ).json();
     expect(me.onboarded).toBe(true);
     expect(me.timezone).toBe('Europe/Moscow');
-    expect(me.comedianProfile).toMatchObject({ category: 'newbie', travelBufferMinutes: 30 });
+    expect(me.comedianProfile).toMatchObject({ travelBufferMinutes: 30 });
   });
 
   it('профиль заполняется постепенно: необязательные поля не затираются', async () => {
@@ -238,6 +238,41 @@ describe.skipIf(!url)('API профили и справочники (Postgres)',
       bio: 'Про метро',
       links: [{ type: 'youtube', url: 'https://youtube.com/watch?v=1' }],
     });
+  });
+
+  it('опыт комика: год, частота, оценка «всего», сеты и языки без повторов', async () => {
+    const me = (
+      await call('PUT', '/me/comedian-profile', {
+        stageName: 'Тестовый Комик',
+        cityId: moscowId,
+        contact: '@test',
+        startedYear: 2019,
+        gigsPerMonth: 8,
+        setLengths: [10, 5, 10, 60],
+        languages: ['kk', 'ru', 'ru'],
+      })
+    ).json();
+    expect(me.comedianProfile).toMatchObject({
+      startedYear: 2019,
+      gigsPerMonth: 8,
+      setLengths: [5, 10, 60],
+      languages: ['ru', 'kk'],
+    });
+    expect(me.comedianProfile.totalGigsEstimate).toBeGreaterThanOrEqual(500);
+
+    const bad = async (body: object) =>
+      (
+        await call('PUT', '/me/comedian-profile', {
+          stageName: 'Тестовый Комик',
+          cityId: moscowId,
+          contact: '@test',
+          ...body,
+        })
+      ).statusCode;
+    expect(await bad({ startedYear: new Date().getUTCFullYear() + 1 })).toBe(400);
+    expect(await bad({ setLengths: [7] })).toBe(400);
+    expect(await bad({ languages: ['de'] })).toBe(400);
+    expect(await bad({ gigsPerMonth: -1 })).toBe(400);
   });
 
   it('профиль без обязательных полей или с несуществующим городом — VALIDATION', async () => {

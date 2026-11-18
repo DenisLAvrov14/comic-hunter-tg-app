@@ -432,12 +432,15 @@ export async function findStaff(db: DbOrTx, eventId: string, userId: string) {
 export interface ComedianRow {
   userId: string;
   stageName: string;
-  category: 'newbie' | 'experienced' | 'media';
   cityId: number;
   contact: string;
   bio: string | null;
   links: typeof comedianProfiles.$inferSelect.links;
   travelBufferMinutes: number;
+  startedYear: number | null;
+  gigsPerMonth: number | null;
+  setLengths: number[];
+  languages: string[];
   photoKey: string | null;
 }
 
@@ -452,12 +455,15 @@ const firstPhoto = sql<string | null>`(
 const comedianColumns = {
   userId: comedianProfiles.userId,
   stageName: comedianProfiles.stageName,
-  category: comedianProfiles.category,
   cityId: comedianProfiles.cityId,
   contact: comedianProfiles.contact,
   bio: comedianProfiles.bio,
   links: comedianProfiles.links,
   travelBufferMinutes: comedianProfiles.travelBufferMinutes,
+  startedYear: comedianProfiles.startedYear,
+  gigsPerMonth: comedianProfiles.gigsPerMonth,
+  setLengths: comedianProfiles.setLengths,
+  languages: comedianProfiles.languages,
   photoKey: firstPhoto,
 };
 
@@ -472,7 +478,6 @@ export function searchComedians(
   q: {
     text?: string;
     cityId?: number;
-    category?: ComedianRow['category'];
     limit?: number;
     /** С городом: кто в этом городе в этот день, с учётом поездок. */
     date?: string;
@@ -502,7 +507,6 @@ export function searchComedians(
           q.cityId
             ? or(and(eq(comedianProfiles.cityId, q.cityId), away ? not(away) : undefined), guest!)
             : undefined,
-          q.category ? eq(comedianProfiles.category, q.category) : undefined,
         ),
       )
       // Гости первыми: ради них и смотрят дату, и в лимит они должны попасть.

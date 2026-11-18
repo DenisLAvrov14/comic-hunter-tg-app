@@ -101,7 +101,6 @@ export interface ProfileView {
   comedian: {
     stageName: string;
     city: string;
-    category: string;
     contact: string;
     bio: string | null;
     links: Array<{ label: string; url: string }>;
@@ -123,7 +122,6 @@ export function renderProfile(p: ProfileView): string {
       [
         `🎤 ${c.stageName} — ${t.profile.comedian}`,
         t.profile.city(c.city),
-        t.profile.category(c.category),
         t.profile.contact(c.contact),
         c.bio,
         c.links.length

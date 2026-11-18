@@ -18,7 +18,7 @@ import {
   findUserById,
   listComedianTrips,
 } from '@standup/db';
-import { tripDateError, utcToLocal } from '@standup/domain';
+import { isValidStartYear, tripDateError, utcToLocal } from '@standup/domain';
 import {
   ComedianProfileInput,
   OrganizerProfileInput,
@@ -136,6 +136,11 @@ export const meRoutes: FastifyPluginAsync<{
 
   app.put('/me/comedian-profile', async (req): Promise<Me> => {
     const body = ComedianProfileInput.parse(req.body);
+    if (body.startedYear != null && !isValidStartYear(body.startedYear, new Date())) {
+      throw new ApiError('VALIDATION', 'Год начала выступлений — не позже текущего', {
+        field: 'startedYear',
+      });
+    }
     await requireRole(req.user.sub, 'comedian');
     const city = await requireCity(body.cityId);
     await upsertComedianProfile(db, req.user.sub, body);

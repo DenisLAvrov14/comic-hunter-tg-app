@@ -152,6 +152,28 @@ describe.skipIf(!TEST_DATABASE_URL)('API карта, счётчики, площ�
     expect(forComedian.links).toHaveLength(2);
     const forOrganizer = (await org.call('GET', `/comedians/${a.userId}`)).json();
     expect(forOrganizer.contact).toBe('@c0');
+    // Опыт не заполнен — пусто, без оценки.
+    expect(forOrganizer).toMatchObject({
+      startedYear: null,
+      totalGigsEstimate: null,
+      setLengths: [],
+      languages: [],
+    });
+    await a.call('PUT', '/me/comedian-profile', {
+      stageName: `А ${base}`,
+      cityId: cityId('Тбилиси'),
+      contact: '@c0',
+      startedYear: 2024,
+      gigsPerMonth: 4,
+      setLengths: [5, 10],
+      languages: ['ru', 'en'],
+    });
+    expect((await b.call('GET', `/comedians/${a.userId}`)).json()).toMatchObject({
+      startedYear: 2024,
+      gigsPerMonth: 4,
+      setLengths: [5, 10],
+      languages: ['ru', 'en'],
+    });
   });
 
   it('счётчики меню: приглашения, заявки, приглашения вести', async () => {

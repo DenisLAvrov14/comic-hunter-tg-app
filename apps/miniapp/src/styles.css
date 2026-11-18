@@ -70,6 +70,10 @@ h1 {
   background: var(--section-bg);
 }
 
+.card > p {
+  margin: 0;
+}
+
 .center {
   text-align: center;
   margin-top: 40vh;
@@ -510,6 +514,11 @@ nav.list > a::after {
 .kv {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+.kv > .hint {
+  font-size: 13px;
 }
 
 .pre {
@@ -543,9 +552,41 @@ nav.list > a::after {
   color: var(--hint);
 }
 
+/* Состав на экране события — те же строки, что на «Карте»: номер и имя. */
 .lineup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin: 0;
-  padding-left: 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.lineup > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+
+/* Формат, сет и места — плашками в строку, без переносов посреди фразы. */
+.event-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.event-facts > span {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  background: var(--bg);
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .button-link {
@@ -1007,11 +1048,73 @@ a.chip {
   text-align: left;
 }
 
+/* Шапка события: дата со стрелкой, название, место и заполненность — всё по одному левому краю. */
+.map-event-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 14px 16px;
+}
+
+.map-event-when {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.map-event-title {
+  font-size: 17px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.map-event-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.map-event-meta .hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-event-slots {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .map-event-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 16px 12px;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.map-event-body > .button-link {
+  align-self: stretch;
+}
+
+/* Без фото — первая буква имени, чтобы строки состава не «прыгали». */
+.avatar-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.performer .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+  background: var(--section-bg);
 }
 
 .performers {
@@ -1024,8 +1127,8 @@ a.chip {
 }
 
 .performer {
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
   background: var(--bg);
 }
 
@@ -1113,6 +1216,18 @@ a.chip {
   line-height: 18px;
   background: color-mix(in srgb, var(--hint) 22%, transparent);
   color: var(--hint);
+}
+
+/* Статус участия рядом с заголовком карточки. */
+.status-pill {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--link) 16%, transparent);
+  color: var(--link);
 }
 
 /* Пустая панель действий (нет прав или событие прошло) не занимает места. */
@@ -1980,4 +2095,70 @@ button.venue-stat-map {
 
 .venue-card .action-bar {
   margin: 0;
+}
+
+/* Длины сетов и языки: ровная сетка одинаковых плашек, а не тянущиеся на всю строку кнопки. */
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 6px;
+}
+
+.chip-grid > .chip {
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.field-group.invalid .chip-grid {
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+/* «Всего примерно 500+» под годом и частотой. */
+.estimate {
+  margin: -4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--link);
+}
+
+/* Аватар в онбординге: круг слева, подпись и кнопка справа. */
+.avatar-picker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatar-picker-image {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--hint);
+  font-size: 28px;
+  font-weight: 400;
+}
+
+.avatar-picker-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.comedian-experience {
+  gap: 6px;
+  font-size: 14px;
+}
+
+.comedian-experience .event-facts > span {
+  background: color-mix(in srgb, var(--hint) 16%, transparent);
 }

@@ -371,7 +371,7 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
     expect(freeIds).not.toContain(c.userId);
 
     const card = (await org.call('GET', `/comedians/${c.userId}`)).json();
-    expect(card).toMatchObject({ id: c.userId, gigsCount: 0, category: 'newbie' });
+    expect(card).toMatchObject({ id: c.userId, gigsCount: 0 });
     expect((await a.call('GET', '/comedians')).statusCode).toBe(403);
   });
 

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ru, type Me, type UserRole } from '@standup/shared';
+import { PHOTO_LIMIT, PHOTO_MAX_BYTES, ru, type Me, type UserRole } from '@standup/shared';
 import { api } from '../api';
 import { useMe } from '../auth';
 import {
@@ -115,6 +115,7 @@ function ProfileStep({
   const isOrganizer = me.roles.includes('organizer');
   const [comedian, setComedian] = useState(() => comedianDraft(me));
   const [organizer, setOrganizer] = useState(() => organizerDraft(me));
+  const [avatar, setAvatar] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -144,7 +145,15 @@ function ProfileStep({
     setError(null);
     try {
       let user = me;
-      if (isComedian) user = await api.putComedianProfile(comedianInput(comedian, false));
+      if (isComedian) {
+        user = await api.putComedianProfile(comedianInput(comedian));
+        // Фото грузим, когда профиль уже есть: первое фото и есть аватар.
+        if (avatar) {
+          await api.uploadPhoto(avatar);
+          setAvatar(null);
+          user = await api.me();
+        }
+      }
       if (isOrganizer) user = await api.putOrganizerProfile(organizerInput(organizer, false));
       haptic('success');
       onDone(user);
@@ -163,6 +172,12 @@ function ProfileStep({
       {isComedian && (
         <section className="card">
           {isOrganizer && <h2>{o.comedianSection}</h2>}
+          <AvatarPicker
+            file={avatar}
+            current={me.comedianProfile?.photos[0]?.previewUrl ?? null}
+            onChange={setAvatar}
+            onError={setError}
+          />
           <ComedianFields
             draft={comedian}
             onChange={setComedianDraft}
@@ -191,6 +206,61 @@ function ProfileStep({
       <ErrorText error={error} />
       <MainButton text={t.next} loading={saving} onClick={submit} />
     </>
+  );
+}
+
+/** Аватар комика: выбранный файл показываем сразу, загружаем после сохранения профиля. */
+function AvatarPicker({
+  file,
+  current,
+  onChange,
+  onError,
+}: {
+  file: File | null;
+  /** Уже загруженное фото (если онбординг проходят повторно). */
+  current: string | null;
+  onChange: (file: File | null) => void;
+  onError: (message: string) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) return setPreview(null);
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const picked = e.target.files?.[0];
+    e.target.value = '';
+    if (!picked) return;
+    if (picked.size > PHOTO_MAX_BYTES) return onError(t.profile.photosHint(PHOTO_LIMIT));
+    onChange(picked);
+  }
+
+  const shown = preview ?? current;
+  return (
+    <div className="avatar-picker">
+      <button
+        type="button"
+        className="avatar-picker-image"
+        aria-label={t.fields.avatarPick}
+        onClick={() => input.current?.click()}
+      >
+        {shown ? <img src={shown} alt="" /> : <span aria-hidden="true">+</span>}
+      </button>
+      <div className="stack-tight">
+        <span className="field-label">
+          {t.fields.avatar} <span className="optional">· {t.optional}</span>
+        </span>
+        <span className="field-hint">{t.fields.avatarHint}</span>
+        <button type="button" className="link-button" onClick={() => input.current?.click()}>
+          {shown ? t.fields.avatarChange : t.fields.avatarPick}
+        </button>
+      </div>
+      <input ref={input} type="file" accept="image/*" hidden onChange={onFile} />
+    </div>
   );
 }
 

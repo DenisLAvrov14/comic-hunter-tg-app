@@ -71,7 +71,6 @@ describe('/profile', () => {
       comedian: {
         stageName: 'Джордан',
         city: 'Москва',
-        category: 'Опытный',
         contact: '@j',
         bio: null,
         links: [{ label: 'Telegram', url: 'https://t.me/j' }],

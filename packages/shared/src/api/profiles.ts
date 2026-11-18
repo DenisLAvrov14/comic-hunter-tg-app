@@ -93,10 +93,6 @@ export const City = z.object({
 });
 export type City = z.infer<typeof City>;
 
-export const comedianCategories = ['newbie', 'experienced', 'media'] as const;
-export const ComedianCategory = z.enum(comedianCategories);
-export type ComedianCategory = z.infer<typeof ComedianCategory>;
-
 export const linkTypes = [
   'video',
   'telegram',
@@ -153,6 +149,33 @@ export type ProfileLink = z.infer<typeof ProfileLink>;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
+/** Длины сетов, из которых комик выбирает свои (можно все). */
+export const SET_LENGTHS = [3, 5, 10, 15, 20, 30, 60] as const;
+/** Языки выступлений. */
+export const comedianLanguages = ['ru', 'en', 'kk'] as const;
+export const ComedianLanguage = z.enum(comedianLanguages);
+export type ComedianLanguage = z.infer<typeof ComedianLanguage>;
+export const GIGS_PER_MONTH_MAX = 100;
+
+const SetLength = z
+  .number()
+  .int()
+  .refine((n) => (SET_LENGTHS as readonly number[]).includes(n), 'Нет такой длины сета');
+/** Уникальные значения по возрастанию — порядок выбора не важен. */
+const uniqueSorted = <T extends number | string>(xs: T[]) =>
+  [...new Set(xs)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+/** Опыт комика: стаж, частота, сеты, языки. Входит и в профиль, и в карточку. */
+export const ComedianExperience = z.object({
+  startedYear: z.number().int().nullable(),
+  gigsPerMonth: z.number().int().nullable(),
+  /** Примерно выступлений всего (ступенькой: 500 → «500+»), null — не посчитать. */
+  totalGigsEstimate: z.number().int().nullable(),
+  setLengths: z.array(z.number().int()),
+  languages: z.array(ComedianLanguage),
+});
+export type ComedianExperience = z.infer<typeof ComedianExperience>;
+
 /**
  * Профиль комика. Обязательны только сценическое имя, город и контакт;
  * остальные поля можно не передавать — тогда сохраняются прежние значения.
@@ -161,15 +184,24 @@ export const ComedianProfileInput = z.object({
   stageName: text(64),
   cityId: z.number().int().positive(),
   contact: text(128),
-  category: ComedianCategory.optional(),
   bio: z.string().trim().max(1000).nullable().optional(),
   // 5 соцсетей отдельными полями + видео и прочие ссылки.
   links: z.array(ProfileLink).max(20).optional(),
   travelBufferMinutes: z.number().int().min(0).max(240).optional(),
   defaultSetMinutes: z.number().int().min(1).max(120).nullable().optional(),
+  /** Год первого выступления; не позже текущего — проверяет сервер. */
+  startedYear: z.number().int().min(1970).max(2100).nullable().optional(),
+  gigsPerMonth: z.number().int().min(0).max(GIGS_PER_MONTH_MAX).nullable().optional(),
+  setLengths: z.array(SetLength).max(SET_LENGTHS.length).transform(uniqueSorted).optional(),
+  /** Без повторов и в порядке списка языков: русский, английский, казахский. */
+  languages: z
+    .array(ComedianLanguage)
+    .max(comedianLanguages.length)
+    .transform((xs) => comedianLanguages.filter((l) => xs.includes(l)))
+    .optional(),
   isSearchable: z.boolean().optional(),
 });
-export type ComedianProfileInput = z.infer<typeof ComedianProfileInput>;
+export type ComedianProfileInput = z.input<typeof ComedianProfileInput>;
 
 export const Photo = z.object({
   id: z.string().uuid(),
@@ -180,12 +212,10 @@ export const Photo = z.object({
 });
 export type Photo = z.infer<typeof Photo>;
 
-export const ComedianProfile = z.object({
+export const ComedianProfile = ComedianExperience.extend({
   stageName: z.string(),
   cityId: z.number().int(),
   contact: z.string(),
-  category: ComedianCategory,
-  categoryVerified: z.boolean(),
   bio: z.string().nullable(),
   links: z.array(ProfileLink),
   travelBufferMinutes: z.number().int(),

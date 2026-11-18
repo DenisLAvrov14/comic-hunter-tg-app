@@ -67,8 +67,7 @@ export function ComedianProfileScreen() {
         text={t.save}
         loading={save.saving}
         onClick={() => {
-          if (required.check())
-            void save.run(() => api.putComedianProfile(comedianInput(draft, true)));
+          if (required.check()) void save.run(() => api.putComedianProfile(comedianInput(draft)));
         }}
       />
     </Screen>

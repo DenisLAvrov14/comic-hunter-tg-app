@@ -110,6 +110,8 @@ export const comedianProfiles = pgTable(
     cityId: integer('city_id')
       .notNull()
       .references(() => cities.id),
+    // Категория (новичок/опытный/медийный) убрана из приложения 18 ноября; колонки
+    // оставлены, чтобы не терять данные. Удалить отдельной миграцией, если не вернём.
     category: comedianCategoryEnum('category').notNull().default('newbie'),
     categoryVerified: boolean('category_verified').notNull().default(false),
     bio: text('bio'),
@@ -117,6 +119,14 @@ export const comedianProfiles = pgTable(
     links: jsonb('links').$type<ProfileLink[]>().notNull().default([]),
     travelBufferMinutes: integer('travel_buffer_minutes').notNull().default(30),
     defaultSetMinutes: integer('default_set_minutes'),
+    /** Год первого выступления — из него и частоты считается примерный опыт. */
+    startedYear: integer('started_year'),
+    /** Сколько в среднем выступает в месяц. */
+    gigsPerMonth: integer('gigs_per_month'),
+    /** Длины сетов в минутах, которые есть у комика (3, 5, 10…). */
+    setLengths: jsonb('set_lengths').$type<number[]>().notNull().default([]),
+    /** Языки выступлений: ru, en, kk. */
+    languages: jsonb('languages').$type<string[]>().notNull().default([]),
     isSearchable: boolean('is_searchable').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

@@ -44,11 +44,14 @@ export interface ComedianProfileData {
   stageName: string;
   cityId: number;
   contact: string;
-  category?: ComedianProfile['category'];
   bio?: string | null;
   links?: ProfileLink[];
   travelBufferMinutes?: number;
   defaultSetMinutes?: number | null;
+  startedYear?: number | null;
+  gigsPerMonth?: number | null;
+  setLengths?: number[];
+  languages?: string[];
   isSearchable?: boolean;
 }
 

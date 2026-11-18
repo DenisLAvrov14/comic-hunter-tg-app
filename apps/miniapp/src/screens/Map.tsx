@@ -75,20 +75,22 @@ function MapEventItem({ e, city }: { e: MapEvent; city?: string }) {
           setOpen(!open);
         }}
       >
-        <span className="grow stack-tight">
+        <span className="map-event-when">
           <span className="event-when">{formatDateTime(e.startsAt, e.timezone)}</span>
-          <strong>{e.title}</strong>
+          <span className="chevron" aria-hidden="true">
+            {open ? '▴' : '▾'}
+          </span>
+        </span>
+        <strong className="map-event-title">{e.title}</strong>
+        <span className="map-event-meta">
           <span className="hint">
             {e.venue.name}
             {city ? `, ${city}` : ''} · {t.formats[e.format]}
           </span>
-          <span className="hint">
+          <span className="map-event-slots">
             {e.status !== 'recruiting' ? `${t.eventStatuses[e.status]} · ` : ''}
             {t.events.slots(e.acceptedCount, e.slotsCount)}
           </span>
-        </span>
-        <span className="chevron" aria-hidden="true">
-          {open ? '▴' : '▾'}
         </span>
       </button>
       {open && (
@@ -110,7 +112,9 @@ function MapEventItem({ e, city }: { e: MapEvent; city?: string }) {
                     {p.photoUrl ? (
                       <img className="avatar" src={p.photoUrl} alt="" />
                     ) : (
-                      <span className="avatar" />
+                      <span className="avatar avatar-letter" aria-hidden="true">
+                        {p.stageName.trim().charAt(0).toUpperCase()}
+                      </span>
                     )}
                     <span className="grow">{p.stageName}</span>
                     <span className="chevron" aria-hidden="true">
@@ -122,8 +126,8 @@ function MapEventItem({ e, city }: { e: MapEvent; city?: string }) {
               ))}
             </ol>
           )}
-          <Link className="link-button" to={`/events/${e.id}`}>
-            {m.details} →
+          <Link className="button-link secondary" to={`/events/${e.id}`}>
+            {m.details}
           </Link>
         </div>
       )}

@@ -350,7 +350,7 @@ function ItemHead({ item, timezone }: { item: LineupItem; timezone: string }) {
       <div className="grow stack-tight">
         <strong>{c.stageName}</strong>
         <span className="hint">
-          {t.categories[c.category]} · {c.contact}
+          {c.contact}
           {item.stageStart ? ` · ${t.manage.stageAt(formatTime(item.stageStart, timezone))}` : ''}
           {item.autoAccepted ? ` · ${t.events.autoAccepted}` : ''}
           {item.isUrgent ? ` · ${l.calling}` : ''}

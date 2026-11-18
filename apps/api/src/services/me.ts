@@ -8,8 +8,8 @@ import {
   type Db,
   type User,
 } from '@standup/db';
-import { onboardingStep } from '@standup/domain';
-import type { Me, Photo } from '@standup/shared';
+import { estimateTotalGigs, onboardingStep } from '@standup/domain';
+import { comedianLanguages, type ComedianExperience, type Me, type Photo } from '@standup/shared';
 import { ApiError } from '../errors';
 import type { FileStorage } from '../storage';
 
@@ -20,6 +20,25 @@ export function toPhoto(storage: FileStorage, p: ComedianPhoto): Photo {
     previewUrl: storage.publicUrl(p.previewS3Key),
     width: p.width,
     height: p.height,
+  };
+}
+
+/** Опыт комика для ответа: стаж, частота, примерно выступлений всего, сеты и языки. */
+export function toExperience(c: {
+  startedYear: number | null;
+  gigsPerMonth: number | null;
+  setLengths: number[];
+  languages: string[];
+}): ComedianExperience {
+  return {
+    startedYear: c.startedYear,
+    gigsPerMonth: c.gigsPerMonth,
+    totalGigsEstimate: estimateTotalGigs(c.startedYear, c.gigsPerMonth, new Date()),
+    setLengths: c.setLengths,
+    // В базе — строки; неизвестные (если язык уберут из списка) не отдаём.
+    languages: c.languages.filter((l): l is ComedianExperience['languages'][number] =>
+      (comedianLanguages as readonly string[]).includes(l),
+    ),
   };
 }
 
@@ -52,13 +71,12 @@ export async function loadMe(db: Db, storage: FileStorage, userOrId: User | stri
           stageName: comedian.stageName,
           cityId: comedian.cityId,
           contact: comedian.contact,
-          category: comedian.category,
-          categoryVerified: comedian.categoryVerified,
           bio: comedian.bio,
           links: comedian.links,
           travelBufferMinutes: comedian.travelBufferMinutes,
           defaultSetMinutes: comedian.defaultSetMinutes,
           isSearchable: comedian.isSearchable,
+          ...toExperience(comedian),
           photos: photos.map((p) => toPhoto(storage, p)),
         }
       : null,

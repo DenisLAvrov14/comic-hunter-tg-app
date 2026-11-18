@@ -161,12 +161,14 @@ function EventBody({
             <span className="hint"> · {event.organizer.projectName}</span>
           )}
         </Row>
-        <p className="hint">
-          {t.formats[event.format]}
-          {event.formatNote ? ` (${event.formatNote})` : ''} ·{' '}
-          {t.events.set(event.setMinutes, event.gapMinutes)} ·{' '}
-          {t.events.slots(event.acceptedCount, event.slotsCount)}
-        </p>
+        <div className="event-facts">
+          <span>
+            {t.formats[event.format]}
+            {event.formatNote ? ` (${event.formatNote})` : ''}
+          </span>
+          <span>{t.events.set(event.setMinutes, event.gapMinutes)}</span>
+          <span>{t.events.slots(event.acceptedCount, event.slotsCount)}</span>
+        </div>
         {event.status !== 'recruiting' && <p className="badge">{t.eventStatuses[event.status]}</p>}
       </section>
 
@@ -179,11 +181,13 @@ function EventBody({
 
       {mine && (
         <section className="card">
-          <h2>{t.events.myStatus}</h2>
-          <p>
-            {t.participationStatuses[mine.status]}
-            {mine.position ? ` · ${t.events.position(mine.position)}` : ''}
-          </p>
+          <div className="event-head">
+            <h2>{t.events.myStatus}</h2>
+            <span className="status-pill">
+              {t.participationStatuses[mine.status]}
+              {mine.position ? ` · ${t.events.position(mine.position)}` : ''}
+            </span>
+          </div>
           {mine.status === 'accepted' && isSoon(event.startsAt) && (
             <DayConfirmation
               participationId={mine.id}
@@ -217,7 +221,10 @@ function EventBody({
         ) : (
           <ol className="lineup">
             {event.lineup.map((l) => (
-              <li key={l.position}>{l.stageName}</li>
+              <li key={l.position}>
+                <span className="performer-pos">{l.position}</span>
+                <span className="grow">{l.stageName}</span>
+              </li>
             ))}
           </ol>
         )}

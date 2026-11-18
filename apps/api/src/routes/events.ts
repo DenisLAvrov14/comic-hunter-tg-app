@@ -81,7 +81,7 @@ import {
   windowEnd,
 } from '../services/events';
 import { tryAutoAccept } from '../services/autoAccept';
-import { toPhoto } from '../services/me';
+import { toExperience, toPhoto } from '../services/me';
 import { applyParticipationAction } from '../services/participations';
 import type { FileStorage } from '../storage';
 
@@ -583,7 +583,6 @@ export const eventRoutes: FastifyPluginAsync<{
     let rows = await searchComedians(db, {
       text: q.q,
       cityId: q.city,
-      category: q.category,
       limit: q.freeAtEvent ? 200 : COMEDIAN_SEARCH_LIMIT,
       date,
       today,
@@ -625,12 +624,12 @@ export const eventRoutes: FastifyPluginAsync<{
     return {
       id: c.userId,
       stageName: c.stageName,
-      category: c.category,
       cityId: c.cityId,
       bio: c.bio,
       links: c.links,
       photos: photos.map((p) => toPhoto(storage, p)),
       gigsCount,
+      ...toExperience(c),
       contact: isOrganizer ? c.contact : null,
     };
   });

@@ -1,9 +1,11 @@
 import {
-  comedianCategories,
+  GIGS_PER_MONTH_MAX,
+  SET_LENGTHS,
+  comedianLanguages,
   socialLinkTypes,
   socialUrl,
   ru,
-  type ComedianCategory,
+  type ComedianLanguage,
   type ComedianProfileInput,
   type LinkType,
   type Me,
@@ -12,6 +14,7 @@ import {
   type SocialLinkType,
   type UserRole,
 } from '@standup/shared';
+import { estimateTotalGigs } from '@standup/domain';
 import { CitySelect, TextField } from './ui';
 import { Select } from './select';
 
@@ -21,7 +24,6 @@ export interface ComedianDraft {
   stageName: string;
   cityId: number | null;
   contact: string;
-  category: ComedianCategory;
   bio: string;
   /** Соцсети — отдельными полями: ссылка или ник. */
   socials: Record<SocialLinkType, string>;
@@ -29,6 +31,11 @@ export interface ComedianDraft {
   links: Array<{ type: LinkType; url: string }>;
   /** Повторные ссылки на ту же соцсеть из старых профилей — сохраняются как есть. */
   extraSocials: ProfileLink[];
+  /** Год и частота — строками, как в поле ввода. */
+  startedYear: string;
+  gigsPerMonth: string;
+  setLengths: number[];
+  languages: ComedianLanguage[];
   isSearchable: boolean;
 }
 
@@ -62,11 +69,31 @@ export function comedianDraft(me: Me): ComedianDraft {
     stageName: p?.stageName ?? '',
     cityId: knownCity(me),
     contact: p?.contact ?? (me.telegramUsername ? `@${me.telegramUsername}` : ''),
-    category: p?.category ?? 'newbie',
     bio: p?.bio ?? '',
     ...splitLinks(p?.links ?? []),
+    startedYear: p?.startedYear?.toString() ?? '',
+    gigsPerMonth: p?.gigsPerMonth?.toString() ?? '',
+    setLengths: p?.setLengths ?? [],
+    // Новому комику сразу отмечаем русский — чаще всего он и нужен.
+    languages: p ? p.languages : ['ru'],
     isSearchable: p?.isSearchable ?? true,
   };
+}
+
+/** Целое число из поля ввода; null — пусто или не число. */
+function intOrNull(v: string): number | null {
+  const n = Number(v.trim());
+  return v.trim() !== '' && Number.isInteger(n) ? n : null;
+}
+
+function validYear(v: string) {
+  const y = intOrNull(v);
+  return y !== null && y >= 1970 && y <= new Date().getFullYear();
+}
+
+function validPerMonth(v: string) {
+  const n = intOrNull(v);
+  return n !== null && n >= 0 && n <= GIGS_PER_MONTH_MAX;
 }
 
 /** Обязательные поля для подсветки: подпись поля и заполнено ли оно. */
@@ -75,17 +102,27 @@ export function comedianRequired(d: ComedianDraft): Array<[string, boolean]> {
     [t.fields.stageName, d.stageName.trim() !== ''],
     [t.fields.city, d.cityId !== null],
     [t.fields.contact, d.contact.trim() !== ''],
+    [t.fields.startedYear, validYear(d.startedYear)],
+    [t.fields.gigsPerMonth, validPerMonth(d.gigsPerMonth)],
+    [t.fields.setLengths, d.setLengths.length > 0],
+    [t.fields.languages, d.languages.length > 0],
   ];
 }
 
-/** Минимальный вариант (онбординг) отправляет только обязательные поля — остальные сервер не трогает. */
-export function comedianInput(d: ComedianDraft, full: boolean): ComedianProfileInput {
-  const base = { stageName: d.stageName.trim(), cityId: d.cityId!, contact: d.contact.trim() };
-  if (!full) return base;
+/**
+ * Профиль целиком. Черновик собран из текущего профиля, поэтому поля, которых нет
+ * в онбординге (категория, видео, поиск), уходят прежними.
+ */
+export function comedianInput(d: ComedianDraft): ComedianProfileInput {
   return {
-    ...base,
-    category: d.category,
+    stageName: d.stageName.trim(),
+    cityId: d.cityId!,
+    contact: d.contact.trim(),
     bio: d.bio.trim() || null,
+    startedYear: intOrNull(d.startedYear),
+    gigsPerMonth: intOrNull(d.gigsPerMonth),
+    setLengths: d.setLengths,
+    languages: d.languages,
     links: [
       ...socialLinkTypes.flatMap((type) => {
         const url = socialUrl(type, d.socials[type]);
@@ -133,29 +170,20 @@ export function ComedianFields({
         hint={t.fields.contactHint}
         onChange={(v) => set('contact', v)}
       />
+      <TextField
+        label={t.fields.bio}
+        optional
+        multiline
+        value={draft.bio}
+        onChange={(v) => set('bio', v)}
+      />
+      <SocialFields
+        value={draft.socials}
+        onChange={(type, v) => set('socials', { ...draft.socials, [type]: v })}
+      />
+      <ExperienceFields draft={draft} set={set} missing={missing} />
       {full && (
         <>
-          <label>
-            {t.fields.category}
-            <Select value={draft.category} onChange={(v) => set('category', v as ComedianCategory)}>
-              {comedianCategories.map((c) => (
-                <option key={c} value={c}>
-                  {t.categories[c]}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <TextField
-            label={t.fields.bio}
-            optional
-            multiline
-            value={draft.bio}
-            onChange={(v) => set('bio', v)}
-          />
-          <SocialFields
-            value={draft.socials}
-            onChange={(type, v) => set('socials', { ...draft.socials, [type]: v })}
-          />
           <LinksEditor links={draft.links} onChange={(v) => set('links', v)} />
           <label className="checkbox">
             <input
@@ -167,6 +195,89 @@ export function ComedianFields({
           </label>
         </>
       )}
+    </>
+  );
+}
+
+function toggled<T>(xs: T[], x: T): T[] {
+  return xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x];
+}
+
+/** Опыт: год старта и частота (из них — «всего примерно»), длины сетов, языки. */
+function ExperienceFields({
+  draft,
+  set,
+  missing,
+}: {
+  draft: ComedianDraft;
+  set: <K extends keyof ComedianDraft>(key: K, value: ComedianDraft[K]) => void;
+  missing: string[];
+}) {
+  const total =
+    validYear(draft.startedYear) && validPerMonth(draft.gigsPerMonth)
+      ? estimateTotalGigs(intOrNull(draft.startedYear), intOrNull(draft.gigsPerMonth), new Date())
+      : null;
+  const digits = (v: string, max: number) => v.replace(/\D/g, '').slice(0, max);
+  return (
+    <>
+      <div className="row">
+        <TextField
+          label={t.fields.startedYear}
+          inputMode="numeric"
+          placeholder={t.fields.startedYearPlaceholder}
+          value={draft.startedYear}
+          invalid={missing.includes(t.fields.startedYear)}
+          onChange={(v) => set('startedYear', digits(v, 4))}
+        />
+        <TextField
+          label={t.fields.gigsPerMonth}
+          inputMode="numeric"
+          placeholder={t.fields.gigsPerMonthPlaceholder}
+          value={draft.gigsPerMonth}
+          invalid={missing.includes(t.fields.gigsPerMonth)}
+          onChange={(v) => set('gigsPerMonth', digits(v, 3))}
+        />
+      </div>
+      {total !== null && <p className="estimate">{t.fields.totalGigs(total)}</p>}
+      <div className={`field-group${missing.includes(t.fields.setLengths) ? ' invalid' : ''}`}>
+        <span className="field-label">
+          {t.fields.setLengths} <span className="optional">· {t.fields.setLengthsHint}</span>
+        </span>
+        <div className="chip-grid">
+          {SET_LENGTHS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={draft.setLengths.includes(n) ? 'chip active' : 'chip'}
+              aria-pressed={draft.setLengths.includes(n)}
+              onClick={() =>
+                set(
+                  'setLengths',
+                  toggled(draft.setLengths, n).sort((a, b) => a - b),
+                )
+              }
+            >
+              {t.fields.setMinutes(n)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={`field-group${missing.includes(t.fields.languages) ? ' invalid' : ''}`}>
+        <span className="field-label">{t.fields.languages}</span>
+        <div className="chip-grid">
+          {comedianLanguages.map((l) => (
+            <button
+              key={l}
+              type="button"
+              className={draft.languages.includes(l) ? 'chip active' : 'chip'}
+              aria-pressed={draft.languages.includes(l)}
+              onClick={() => set('languages', toggled(draft.languages, l))}
+            >
+              {t.languages[l]}
+            </button>
+          ))}
+        </div>
+      </div>
     </>
   );
 }

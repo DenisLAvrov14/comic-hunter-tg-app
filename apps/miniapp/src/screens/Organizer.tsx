@@ -3,10 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   COMEDIAN_SEARCH_LIMIT,
-  comedianCategories,
   ru,
   selectableEventFormats,
-  type ComedianCategory,
   type ComedianSearchItem,
   type EventDetails,
   type EventFormat,
@@ -350,9 +348,7 @@ function ComedianSummary({ c }: { c: ComedianSearchItem }) {
   return (
     <span className="grow stack-tight">
       <strong>{c.stageName}</strong>
-      <span className="hint">
-        {t.categories[c.category]} · {cityName(c.cityId)}
-      </span>
+      <span className="hint">{cityName(c.cityId)}</span>
       {c.trip && (
         <span className="trip-note">
           {t.trips.note(cityName(c.trip.cityId), formatDayRange(c.trip.startsOn, c.trip.endsOn))}
@@ -366,16 +362,14 @@ function ComedianSummary({ c }: { c: ComedianSearchItem }) {
 export function ComediansScreen() {
   const { me } = useMe();
   const [q, setQ] = useState('');
-  const [category, setCategory] = useState<ComedianCategory | ''>('');
   const [date, setDate] = useState('');
   const [opened, setOpened] = useState<string | null>(null);
   const [city, setCity] = useState<number | null>(me.organizerProfile?.cityId ?? null);
   const { data, error, isPending } = useQuery({
-    queryKey: ['comedians', 'browse', q, category, city, date],
+    queryKey: ['comedians', 'browse', q, city, date],
     queryFn: () =>
       api.comedians({
         q: q.trim() || undefined,
-        category: category || undefined,
         city: city ?? undefined,
         date: date || undefined,
       }),
@@ -391,17 +385,6 @@ export function ComediansScreen() {
         onAny={() => setCity(null)}
       />
       <div className="fields">
-        <label>
-          {t.comedians.category}
-          <Select value={category} onChange={(v) => setCategory(v as ComedianCategory | '')}>
-            <option value="">{t.invite.anyCategory}</option>
-            {comedianCategories.map((c) => (
-              <option key={c} value={c}>
-                {t.categories[c]}
-              </option>
-            ))}
-          </Select>
-        </label>
         <label>
           {t.comedians.date}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -447,18 +430,16 @@ export function InviteScreen() {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
-  const [category, setCategory] = useState<ComedianCategory | ''>('');
   const [freeOnly, setFreeOnly] = useState(true);
   const [selected, setSelected] = useState<string[]>([]);
   const [opened, setOpened] = useState<string | null>(null);
   // По умолчанию без фильтра: на событие зовут и комиков из других городов.
   const [city, setCity] = useState<number | null>(null);
   const search = useQuery({
-    queryKey: ['comedians', q, category, freeOnly, city],
+    queryKey: ['comedians', q, freeOnly, city],
     queryFn: () =>
       api.comedians({
         q: q.trim() || undefined,
-        category: category || undefined,
         city: city ?? undefined,
         freeAtEvent: freeOnly ? id : undefined,
       }),
@@ -485,17 +466,6 @@ export function InviteScreen() {
           anyLabel={t.invite.anyCity}
           onAny={() => setCity(null)}
         />
-        <label>
-          {t.comedians.category}
-          <Select value={category} onChange={(v) => setCategory(v as ComedianCategory | '')}>
-            <option value="">{t.invite.anyCategory}</option>
-            {comedianCategories.map((c) => (
-              <option key={c} value={c}>
-                {t.categories[c]}
-              </option>
-            ))}
-          </Select>
-        </label>
       </div>
       <label className="checkbox">
         <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} />

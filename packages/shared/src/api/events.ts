@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ComedianCategory, IsoDate, Photo, ProfileLink, Trip } from './profiles';
+import { ComedianExperience, IsoDate, Photo, ProfileLink, Trip } from './profiles';
 
 export const eventFormats = ['open_mic', 'showcase', 'concert', 'other', 'tryout', 'paid'] as const;
 export const EventFormat = z.enum(eventFormats);
@@ -210,7 +210,6 @@ export type ScheduleConflict = z.infer<typeof ScheduleConflict>;
 export const ComedianBrief = z.object({
   id: z.string().uuid(),
   stageName: z.string(),
-  category: ComedianCategory,
   contact: z.string(),
   photoUrl: z.string().nullable(),
 });
@@ -287,7 +286,6 @@ export type Inbox = z.infer<typeof Inbox>;
 export const ComediansQuery = z.object({
   q: z.string().trim().max(64).optional(),
   city: z.coerce.number().int().positive().optional(),
-  category: ComedianCategory.optional(),
   /** С городом: кто там в этот день, с учётом поездок. */
   date: IsoDate.optional(),
   /** Только свободные во время этого события. */
@@ -295,10 +293,9 @@ export const ComediansQuery = z.object({
 });
 export type ComediansQuery = z.infer<typeof ComediansQuery>;
 
-export const ComedianCard = z.object({
+export const ComedianCard = ComedianExperience.extend({
   id: z.string().uuid(),
   stageName: z.string(),
-  category: ComedianCategory,
   cityId: z.number().int(),
   bio: z.string().nullable(),
   links: z.array(ProfileLink),

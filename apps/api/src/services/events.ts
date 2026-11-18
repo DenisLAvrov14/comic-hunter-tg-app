@@ -235,7 +235,6 @@ export function toComedianBrief(storage: FileStorage, c: ComedianRow): ComedianB
   return {
     id: c.userId,
     stageName: c.stageName,
-    category: c.category,
     contact: c.contact,
     photoUrl: c.photoKey ? storage.publicUrl(c.photoKey) : null,
   };
@@ -272,7 +271,7 @@ export async function loadLineup(
       const c = comedians.get(p.comedianId);
       const brief: ComedianBrief = c
         ? toComedianBrief(storage, c)
-        : { id: p.comedianId, stageName: '—', category: 'newbie', contact: '', photoUrl: null };
+        : { id: p.comedianId, stageName: '—', contact: '', photoUrl: null };
       // Для ещё не принятых показываем, с чем пересечётся всё событие.
       const conflicts =
         c && conflictCheckedStatuses.has(p.status)
