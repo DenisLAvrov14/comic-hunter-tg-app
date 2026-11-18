@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -89,8 +89,24 @@ export function LineupScreen() {
   }
   return (
     <Screen title={event.title} back={<BackButton to="/my-events" />}>
+      <SavedBanner />
       <LineupBody event={event} lineup={lineupQ.data} rights={rightsOf(event)} />
     </Screen>
+  );
+}
+
+/** Что показать после формы события. */
+export type SavedNotice = 'published' | 'draft' | 'saved';
+
+/** «Событие опубликовано» и т.п. — сразу после формы события, пока не ушли с экрана. */
+function SavedBanner() {
+  const saved = (useLocation().state as { saved?: SavedNotice } | null)?.saved;
+  if (!saved) return null;
+  return (
+    <div className="notice-success" role="status">
+      <strong>{t.eventForm.savedNotice[saved]}</strong>
+      <span>{t.eventForm.savedHint[saved]}</span>
+    </div>
   );
 }
 

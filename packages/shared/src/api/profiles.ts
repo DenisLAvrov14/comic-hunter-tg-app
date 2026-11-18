@@ -152,7 +152,8 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 /** Длины сетов, из которых комик выбирает свои (можно все). */
 export const SET_LENGTHS = [3, 5, 10, 15, 20, 30, 60] as const;
 /** Языки выступлений. */
-export const comedianLanguages = ['ru', 'en', 'kk'] as const;
+/** По алфавиту названий: английский, казахский, русский. */
+export const comedianLanguages = ['en', 'kk', 'ru'] as const;
 export const ComedianLanguage = z.enum(comedianLanguages);
 export type ComedianLanguage = z.infer<typeof ComedianLanguage>;
 export const GIGS_PER_MONTH_MAX = 100;
@@ -193,7 +194,7 @@ export const ComedianProfileInput = z.object({
   startedYear: z.number().int().min(1970).max(2100).nullable().optional(),
   gigsPerMonth: z.number().int().min(0).max(GIGS_PER_MONTH_MAX).nullable().optional(),
   setLengths: z.array(SetLength).max(SET_LENGTHS.length).transform(uniqueSorted).optional(),
-  /** Без повторов и в порядке списка языков: русский, английский, казахский. */
+  /** Без повторов и в порядке списка языков (по алфавиту). */
   languages: z
     .array(ComedianLanguage)
     .max(comedianLanguages.length)

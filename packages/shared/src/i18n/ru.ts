@@ -118,7 +118,7 @@ export const ru = {
       searchable: 'Показывать меня в поиске организаторов',
       experience: 'Опыт',
       startedYear: 'Выступаю с',
-      startedYearPlaceholder: 'Год, например 2019',
+      startedYearPlaceholder: 'Выберите год',
       gigsPerMonth: 'Выступлений в месяц',
       gigsPerMonthPlaceholder: 'В среднем, 8',
       totalGigs: (n: number) => `Всего примерно ${n >= 10 ? `${n}+` : n}`,
@@ -435,6 +435,16 @@ export const ru = {
       saveDraft: 'Сохранить черновик',
       save: 'Сохранить',
       timezoneHint: (tz: string) => `Время площадки (${tz})`,
+      savedNotice: {
+        published: 'Событие опубликовано',
+        draft: 'Черновик сохранён',
+        saved: 'Изменения сохранены',
+      },
+      savedHint: {
+        published: 'Оно в «Моих событиях». Здесь — заявки, приглашения и состав.',
+        draft: 'Комики его не видят. Опубликовать можно в «Изменить».',
+        saved: 'Комики в составе видят обновлённые данные.',
+      },
     },
     manage: {
       tabs: {

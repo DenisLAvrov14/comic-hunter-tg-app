@@ -72,12 +72,11 @@ export function can(user: Subject, action: EventAction, r: EventResource): boole
       // есть на «Карте» с составом; подать заявку можно только при открытом наборе или по ссылке.
       return r.event.status !== 'draft';
 
+    // Организатор-комик может подать заявку и на своё событие: выступить сам или проверить,
+    // как работает набор. Принимает её он же — уже как организатор.
     case 'event.apply':
       return (
-        !isOrganizer &&
-        !ownActive &&
-        r.event.status === 'recruiting' &&
-        (r.event.recruitmentOpen || !!r.viaLink)
+        !ownActive && r.event.status === 'recruiting' && (r.event.recruitmentOpen || !!r.viaLink)
       );
 
     case 'invitation.respond':

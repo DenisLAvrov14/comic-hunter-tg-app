@@ -4,6 +4,7 @@ import {
   findEventWithRefs,
   findStaff,
   findUserParticipation,
+  getUserRoles,
   listAcceptedForEvents,
   listBusySlotsInRange,
   listComedianGigsInRange,
@@ -157,7 +158,10 @@ export async function loadEventDetails(
         ? (resource.staff.permissions as Record<string, boolean>)
         : null,
       hostStatus: resource.hostStatus,
-      canApply: can({ userId }, 'event.apply', resource),
+      // Заявку подаёт только комик: у организатора без этой роли кнопки нет.
+      canApply:
+        can({ userId }, 'event.apply', resource) &&
+        (!isOrganizer || (await getUserRoles(db, userId)).includes('comedian')),
       participation: resource.participationRow
         ? toMyParticipation(resource.participationRow)
         : null,

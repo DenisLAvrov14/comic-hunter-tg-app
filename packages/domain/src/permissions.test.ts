@@ -70,8 +70,15 @@ describe('can: организатор и ведущий', () => {
     ).toBe(false);
   });
 
-  it('организатор не подаёт заявку на своё событие и не отвечает на приглашения', () => {
-    expect(can(ORG, 'event.apply', { event: event() })).toBe(false);
+  it('организатор может подать заявку на своё событие (как комик)', () => {
+    expect(can(ORG, 'event.apply', { event: event() })).toBe(true);
+    expect(can(ORG, 'event.apply', { event: event(), participation: { status: 'pending' } })).toBe(
+      false,
+    );
+    expect(can(ORG, 'event.apply', { event: event({ status: 'draft' }) })).toBe(false);
+  });
+
+  it('организатор без приглашения не отвечает на него', () => {
     expect(can(ORG, 'invitation.respond', { event: event() })).toBe(false);
   });
 

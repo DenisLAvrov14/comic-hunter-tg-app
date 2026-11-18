@@ -46,7 +46,7 @@ export async function findUserByTelegramId(db: Db, telegramId: number): Promise<
   return row;
 }
 
-export async function getUserRoles(db: Db, userId: string) {
+export async function getUserRoles(db: DbOrTx, userId: string) {
   const rows = await db
     .select({ role: userRoles.role })
     .from(userRoles)

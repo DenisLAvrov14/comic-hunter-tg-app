@@ -423,6 +423,20 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
       expect((await act(org, mine.participation.id, 'reserve')).json()).toMatchObject({
         status: 'reserve',
       });
+
+      // Заявка на своё событие: подаёт как комик, принимает как организатор.
+      const own = await createEvent({ startsAtLocal: `${day}T15:00` });
+      expect(own.viewer.canApply).toBe(true);
+      const applied = await org.call('POST', `/events/${own.id}/applications`, {});
+      expect(applied.statusCode).toBe(201);
+      expect(applied.json().status).toBe('pending');
+      expect((await act(org, applied.json().id, 'accept')).json()).toMatchObject({
+        status: 'accepted',
+      });
+      // Отзывает как комик.
+      expect((await act(org, applied.json().id, 'withdraw')).json()).toMatchObject({
+        status: 'withdrawn',
+      });
     } finally {
       await org.call('PUT', '/me/roles', { roles: ['organizer'] });
     }

@@ -58,6 +58,15 @@ function splitLinks(links: ProfileLink[]) {
   return { socials, links: rest, extraSocials };
 }
 
+/** Telegram — из аккаунта, если поле пустое: вписывать свой ник руками не нужно. */
+function withTelegram<T extends { socials: Record<SocialLinkType, string> }>(
+  split: T,
+  username: string | null,
+): T {
+  if (split.socials.telegram || !username) return split;
+  return { ...split, socials: { ...split.socials, telegram: `@${username}` } };
+}
+
 /** Город по умолчанию — из другого профиля пользователя, если он уже есть. */
 function knownCity(me: Me): number | null {
   return me.comedianProfile?.cityId ?? me.organizerProfile?.cityId ?? null;
@@ -70,7 +79,7 @@ export function comedianDraft(me: Me): ComedianDraft {
     cityId: knownCity(me),
     contact: p?.contact ?? (me.telegramUsername ? `@${me.telegramUsername}` : ''),
     bio: p?.bio ?? '',
-    ...splitLinks(p?.links ?? []),
+    ...withTelegram(splitLinks(p?.links ?? []), me.telegramUsername),
     startedYear: p?.startedYear?.toString() ?? '',
     gigsPerMonth: p?.gigsPerMonth?.toString() ?? '',
     setLengths: p?.setLengths ?? [],
@@ -89,6 +98,12 @@ function intOrNull(v: string): number | null {
 function validYear(v: string) {
   const y = intOrNull(v);
   return y !== null && y >= 1970 && y <= new Date().getFullYear();
+}
+
+/** Годы для выбора: с текущего вниз до 1970. */
+function stageYears(): number[] {
+  const now = new Date().getFullYear();
+  return Array.from({ length: now - 1970 + 1 }, (_, i) => now - i);
 }
 
 function validPerMonth(v: string) {
@@ -221,14 +236,19 @@ function ExperienceFields({
   return (
     <>
       <div className="row">
-        <TextField
-          label={t.fields.startedYear}
-          inputMode="numeric"
-          placeholder={t.fields.startedYearPlaceholder}
-          value={draft.startedYear}
-          invalid={missing.includes(t.fields.startedYear)}
-          onChange={(v) => set('startedYear', digits(v, 4))}
-        />
+        <label className={missing.includes(t.fields.startedYear) ? 'invalid' : undefined}>
+          {t.fields.startedYear}
+          <Select value={draft.startedYear} onChange={(v) => set('startedYear', v)}>
+            <option value="" disabled>
+              {t.fields.startedYearPlaceholder}
+            </option>
+            {stageYears().map((y) => (
+              <option key={y} value={String(y)}>
+                {y}
+              </option>
+            ))}
+          </Select>
+        </label>
         <TextField
           label={t.fields.gigsPerMonth}
           inputMode="numeric"

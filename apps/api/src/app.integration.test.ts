@@ -249,14 +249,14 @@ describe.skipIf(!url)('API профили и справочники (Postgres)',
         startedYear: 2019,
         gigsPerMonth: 8,
         setLengths: [10, 5, 10, 60],
-        languages: ['kk', 'ru', 'ru'],
+        languages: ['ru', 'kk', 'ru'],
       })
     ).json();
     expect(me.comedianProfile).toMatchObject({
       startedYear: 2019,
       gigsPerMonth: 8,
       setLengths: [5, 10, 60],
-      languages: ['ru', 'kk'],
+      languages: ['kk', 'ru'],
     });
     expect(me.comedianProfile.totalGigsEstimate).toBeGreaterThanOrEqual(500);
 

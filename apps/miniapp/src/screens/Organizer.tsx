@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,6 +27,7 @@ import {
   useCities,
   useRequired,
 } from '../ui';
+import type { SavedNotice } from './Lineup';
 import { Select } from '../select';
 
 const t = ru.app;
@@ -177,16 +178,27 @@ function EventForm({ event }: { event?: EventDetails }) {
   });
   const venue = venues.data?.find((v) => v.id === d.venueId);
 
+  // Нативную кнопку Telegram можно нажать ещё раз, пока она не стала «загрузкой», —
+  // без этого флага получались дубли событий.
+  const sending = useRef(false);
+  const isDraft = event?.status === 'draft';
   const save = useMutation({
     mutationFn: (status: 'draft' | 'recruiting' | undefined) =>
-      event ? api.updateEvent(event.id, toInput(d)) : api.createEvent({ ...toInput(d), status }),
-    onSuccess: (saved) => {
+      event
+        ? api.updateEvent(event.id, { ...toInput(d), ...(status ? { status } : {}) })
+        : api.createEvent({ ...toInput(d), status }),
+    onSuccess: (saved, status) => {
       haptic('success');
       void queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.setQueryData(['event', saved.id], saved);
-      navigate(`/events/${saved.id}/manage`, { replace: true });
+      const notice: SavedNotice =
+        status === 'recruiting' ? 'published' : status === 'draft' ? 'draft' : 'saved';
+      navigate(`/events/${saved.id}/manage`, { replace: true, state: { saved: notice } });
     },
-    onError: () => haptic('error'),
+    onError: () => {
+      sending.current = false;
+      haptic('error');
+    },
   });
 
   const f = t.eventForm;
@@ -200,7 +212,9 @@ function EventForm({ event }: { event?: EventDetails }) {
     [f.setMinutes, Number(d.setMinutes) > 0],
   ]);
   const submit = (status: 'draft' | 'recruiting' | undefined) => {
-    if (required.check()) save.mutate(status);
+    if (sending.current || !required.check()) return;
+    sending.current = true;
+    save.mutate(status);
   };
   const num = (k: 'slotsCount' | 'setMinutes') => (v: string) => set(k, v.replace(/\D/g, ''));
 
@@ -327,15 +341,20 @@ function EventForm({ event }: { event?: EventDetails }) {
 
       <MissingText missing={required.missing} />
       <ErrorText error={save.error} />
-      {!event && (
-        <button className="secondary" disabled={save.isPending} onClick={() => submit('draft')}>
+      {/* Новое событие и черновик: сохранить черновиком или опубликовать. */}
+      {(!event || isDraft) && (
+        <button
+          className="secondary"
+          disabled={save.isPending}
+          onClick={() => submit(event ? undefined : 'draft')}
+        >
           {t.eventForm.saveDraft}
         </button>
       )}
       <MainButton
-        text={event ? t.eventForm.save : t.eventForm.publish}
+        text={event && !isDraft ? t.eventForm.save : t.eventForm.publish}
         loading={save.isPending}
-        onClick={() => submit(event ? undefined : 'recruiting')}
+        onClick={() => submit(event && !isDraft ? undefined : 'recruiting')}
       />
     </Screen>
   );

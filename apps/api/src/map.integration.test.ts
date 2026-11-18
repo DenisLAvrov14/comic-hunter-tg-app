@@ -172,7 +172,7 @@ describe.skipIf(!TEST_DATABASE_URL)('API карта, счётчики, площ�
       startedYear: 2024,
       gigsPerMonth: 4,
       setLengths: [5, 10],
-      languages: ['ru', 'en'],
+      languages: ['en', 'ru'],
     });
   });
 

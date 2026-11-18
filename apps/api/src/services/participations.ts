@@ -62,10 +62,14 @@ export async function applyParticipationAction(
     const p = (await findParticipation(tx, participationId))!;
     const isOrganizer = event.organizerId === userId;
 
-    // Организатор, позвавший себя, отвечает на приглашение как комик, а остальным
-    // (резерв, убрать из состава) управляет как организатор.
+    // Организатор в своём же составе: отвечает на приглашение и отзывает заявку как комик,
+    // а свою заявку принимает, отправляет в резерв или убирает как организатор.
+    // «Принять» есть у обоих — решает статус: приглашение принимает комик, заявку — организатор.
     const isComedian =
-      p.comedianId === userId && (!isOrganizer || comedianActions.includes(req.action));
+      p.comedianId === userId &&
+      (!isOrganizer ||
+        (comedianActions.includes(req.action) &&
+          transition(p.status, req.action, 'comedian', { urgent: p.isUrgent }).ok));
     const staff = await findStaff(tx, event.id, userId);
     const resource = {
       event: {
