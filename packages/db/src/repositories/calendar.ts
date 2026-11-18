@@ -46,6 +46,21 @@ export async function createBusySlot(
   return row!;
 }
 
+/** Правка своей записи; чужую не найдёт — вернёт undefined. */
+export async function updateBusySlot(
+  db: DbOrTx,
+  id: string,
+  userId: string,
+  data: Pick<typeof busySlots.$inferInsert, 'kind' | 'startsAt' | 'endsAt' | 'title' | 'venueText'>,
+): Promise<BusySlot | undefined> {
+  const [row] = await db
+    .update(busySlots)
+    .set(data)
+    .where(and(eq(busySlots.id, id), eq(busySlots.userId, userId)))
+    .returning();
+  return row;
+}
+
 export async function deleteBusySlot(db: DbOrTx, id: string, userId: string): Promise<boolean> {
   const rows = await db
     .delete(busySlots)

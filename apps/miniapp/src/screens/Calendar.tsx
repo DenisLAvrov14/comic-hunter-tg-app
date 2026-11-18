@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ru, type CalendarBusy, type CalendarGig, type ScheduleConflict } from '@standup/shared';
@@ -8,6 +8,7 @@ import { useMe } from '../auth';
 import { formatDateTime, formatTime, toLocalParts } from '../format';
 import { haptic } from '../telegram';
 import { CitySelect, ErrorText, MissingText, Screen, TextField, useRequired } from '../ui';
+import { DateInput, TimeInput } from '../pickers';
 import { Select } from '../select';
 
 const t = ru.app;
@@ -190,7 +191,9 @@ function GigCard({ gig }: { gig: CalendarGig }) {
 }
 
 function BusyCard({ busy, tz }: { busy: CalendarBusy; tz: string }) {
+  const { me } = useMe();
   const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
   const remove = useMutation({
     mutationFn: () => api.deleteBusy(busy.id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['calendar'] }),
@@ -198,6 +201,17 @@ function BusyCard({ busy, tz }: { busy: CalendarBusy; tz: string }) {
   const kind = busy.type === 'busy' ? c.busy : c.manualGig;
   // Название (или вид записи, если названия нет), под ним — только площадка.
   const details = busy.venueText;
+  if (editing) {
+    return (
+      <GigForm
+        tz={tz}
+        cityId={me.comedianProfile?.cityId ?? null}
+        defaultDate={dayKey(busy.startsAt, tz)}
+        initial={busy}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
   return (
     <div className={`event-card ${busy.type === 'busy' ? 'busy' : 'manual'}`}>
       <span className="event-head">
@@ -209,9 +223,16 @@ function BusyCard({ busy, tz }: { busy: CalendarBusy; tz: string }) {
       </span>
       <strong>{busy.title || kind}</strong>
       {details && <span className="hint">{details}</span>}
-      <button className="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
-        {c.remove}
-      </button>
+      <div className="action-bar">
+        {busy.type === 'manual_gig' && (
+          <button className="secondary" onClick={() => setEditing(true)}>
+            {c.edit}
+          </button>
+        )}
+        <button className="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
+          {c.remove}
+        </button>
+      </div>
     </div>
   );
 }
@@ -282,33 +303,62 @@ function MonthGrid({
 }
 
 /** Своё выступление закрывает в календаре два часа от начала. */
-const GIG_HOURS = 2;
+const GIG_MINUTES = 120;
+
+/** Локальные дата и время + минуты, без таймзон: «2026-11-26T23:00» + 120 → «2026-11-27T01:00». */
+function addMinutesLocal(date: string, time: string, minutes: number) {
+  const d = new Date(`${date}T${time}:00Z`);
+  d.setUTCMinutes(d.getUTCMinutes() + minutes);
+  return d.toISOString().slice(0, 16);
+}
 const OTHER = 'other';
 
-/** Своё выступление вне приложения: площадка из списка (или своя), дата и время. */
+/**
+ * Своё выступление вне приложения: площадка из списка (или своя), дата и время.
+ * С `initial` — правка уже добавленного: длительность сохраняется, площадка ищется по названию.
+ */
 function GigForm({
   tz,
   cityId: profileCity,
   defaultDate,
+  initial,
   onDone,
 }: {
   tz: string;
   cityId: number | null;
   defaultDate: string;
+  initial?: CalendarBusy;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
+  const start = initial ? toLocalParts(initial.startsAt, tz) : null;
+  const duration = initial
+    ? Math.round(
+        (new Date(initial.endsAt).getTime() - new Date(initial.startsAt).getTime()) / 60_000,
+      )
+    : GIG_MINUTES;
   const [cityId, setCityId] = useState(profileCity);
-  const [venueId, setVenueId] = useState('');
-  const [otherVenue, setOtherVenue] = useState('');
-  const [date, setDate] = useState(defaultDate);
-  const [from, setFrom] = useState('20:00');
-  const [title, setTitle] = useState('');
+  // Площадка хранится текстом: при правке находим её в списке города, иначе — «Другая».
+  const [venueId, setVenueId] = useState(initial?.venueText ? OTHER : '');
+  const [otherVenue, setOtherVenue] = useState(initial?.venueText ?? '');
+  const [date, setDate] = useState(start?.date ?? defaultDate);
+  const [from, setFrom] = useState(start?.time ?? '20:00');
+  const [title, setTitle] = useState(initial?.title ?? '');
   const venues = useQuery({
     queryKey: ['venues', cityId],
     queryFn: () => api.venues(cityId!),
     enabled: cityId !== null,
   });
+  const [matched, setMatched] = useState(false);
+  useEffect(() => {
+    if (matched || !initial?.venueText || !venues.data) return;
+    setMatched(true);
+    const found = venues.data.find((v) => v.name === initial.venueText);
+    if (found) {
+      setVenueId(found.id);
+      setOtherVenue('');
+    }
+  }, [matched, initial, venues.data]);
   const venueName =
     venueId === OTHER
       ? otherVenue.trim()
@@ -322,16 +372,14 @@ function GigForm({
   ]);
   const add = useMutation({
     mutationFn: () => {
-      const [h, m] = from.split(':').map(Number) as [number, number];
-      const endHour = h + GIG_HOURS;
-      const end = `${String(endHour % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      return api.addBusy({
-        kind: 'manual_gig',
+      const body = {
+        kind: 'manual_gig' as const,
         startsAtLocal: `${date}T${from}`,
-        endsAtLocal: `${endHour >= 24 ? addDays(date, 1) : date}T${end}`,
+        endsAtLocal: addMinutesLocal(date, from, duration),
         title: title.trim() || null,
         venueText: venueName || null,
-      });
+      };
+      return initial ? api.updateBusy(initial.id, body) : api.addBusy(body);
     },
     onSuccess: () => {
       haptic('success');
@@ -342,7 +390,7 @@ function GigForm({
   });
   return (
     <section className="card">
-      <h2>{c.addGig}</h2>
+      <h2>{initial ? c.editGig : c.addGig}</h2>
       <CitySelect
         value={cityId}
         onChange={(id) => {
@@ -375,11 +423,11 @@ function GigForm({
       <div className="fields">
         <label className={required.isMissing(c.date) ? 'invalid' : undefined}>
           {c.date}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={(v) => setDate(v)} />
         </label>
         <label className={required.isMissing(c.from) ? 'invalid' : undefined}>
           {c.from}
-          <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <TimeInput value={from} onChange={(v) => setFrom(v)} />
         </label>
       </div>
       <span className="field-hint">{t.eventForm.timezoneHint(tz)}</span>
@@ -395,7 +443,7 @@ function GigForm({
       )}
       <div className="action-bar">
         <button disabled={add.isPending} onClick={() => required.check() && add.mutate()}>
-          {c.save}
+          {initial ? c.saveChanges : c.save}
         </button>
         <button className="secondary" onClick={onDone}>
           {t.back}

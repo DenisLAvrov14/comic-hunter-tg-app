@@ -17,6 +17,7 @@ import {
   listFeedBusySlots,
   putFeedToken,
   searchOrganizers,
+  updateBusySlot,
   upsertAutoAcceptRule,
   type Db,
 } from '@standup/db';
@@ -117,9 +118,10 @@ export const calendarRoutes: FastifyPluginAsync<{ db: Db; publicBaseUrl: string 
     return { timezone: user.timezone, items };
   });
 
-  app.post('/me/busy-slots', async (req, reply): Promise<CalendarBusy> => {
-    const body = BusySlotInput.parse(req.body);
-    const user = (await findUserById(db, req.user.sub))!;
+  /** Время записи — по таймзоне пользователя; окончание строго позже начала. */
+  async function busyData(userId: string, raw: unknown) {
+    const body = BusySlotInput.parse(raw);
+    const user = (await findUserById(db, userId))!;
     const startsAt = localToUtc(body.startsAtLocal, user.timezone);
     const endsAt = localToUtc(body.endsAtLocal, user.timezone);
     if (endsAt <= startsAt) {
@@ -127,25 +129,40 @@ export const calendarRoutes: FastifyPluginAsync<{ db: Db; publicBaseUrl: string 
         field: 'endsAtLocal',
       });
     }
-    // Своё выступление ставится на любое время, даже вплотную к другому («час в час»):
-    // комик сам знает, успеет ли. Решение владельца продукта, SPEC §10.
-    const slot = await createBusySlot(db, {
-      userId: user.id,
+    return {
       kind: body.kind,
       startsAt,
       endsAt,
       title: body.title ?? null,
       venueText: body.venueText ?? null,
+    };
+  }
+
+  const toBusy = (slot: Awaited<ReturnType<typeof createBusySlot>>): CalendarBusy => ({
+    type: slot.kind,
+    id: slot.id,
+    title: slot.title,
+    venueText: slot.venueText,
+    startsAt: slot.startsAt.toISOString(),
+    endsAt: slot.endsAt.toISOString(),
+  });
+
+  // Своё выступление ставится на любое время, даже вплотную к другому («час в час»):
+  // комик сам знает, успеет ли. Решение владельца продукта, SPEC §10.
+  app.post('/me/busy-slots', async (req, reply): Promise<CalendarBusy> => {
+    const slot = await createBusySlot(db, {
+      userId: req.user.sub,
+      ...(await busyData(req.user.sub, req.body)),
     });
     reply.status(201);
-    return {
-      type: slot.kind,
-      id: slot.id,
-      title: slot.title,
-      venueText: slot.venueText,
-      startsAt: slot.startsAt.toISOString(),
-      endsAt: slot.endsAt.toISOString(),
-    };
+    return toBusy(slot);
+  });
+
+  app.put('/me/busy-slots/:id', async (req): Promise<CalendarBusy> => {
+    const { id } = IdParams.parse(req.params);
+    const slot = await updateBusySlot(db, id, req.user.sub, await busyData(req.user.sub, req.body));
+    if (!slot) throw new ApiError('NOT_FOUND');
+    return toBusy(slot);
   });
 
   app.delete('/me/busy-slots/:id', async (req, reply) => {

@@ -15,6 +15,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 // Таблицы из раздела 3 ТЗ добавляются по этапам. Этап 2: справочники и профили.
@@ -285,6 +286,7 @@ export const notificationKindEnum = pgEnum('notification_kind', [
   'venue_approved',
   'venue_rejected',
   'admin_granted',
+  'event_chat_invite',
 ]);
 export const notificationStatusEnum = pgEnum('notification_status', [
   'pending',
@@ -323,6 +325,14 @@ export const events = pgTable(
     showLineup: boolean('show_lineup').notNull().default(true),
     status: eventStatusEnum('status').notNull().default('draft'),
     lineupVersion: integer('lineup_version').notNull().default(0),
+    // Чат события в Telegram: группа, которую организатор выбрал или создал через бота.
+    // Вступают по ссылке с заявкой — бот одобряет только участников события.
+    chatId: uuid('chat_id').references((): AnyPgColumn => telegramChats.id, {
+      onDelete: 'set null',
+    }),
+    chatInviteLink: text('chat_invite_link'),
+    /** request_id кнопки «Выбрать группу», которую бот прислал организатору (int32). */
+    chatRequestId: integer('chat_request_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -21,6 +21,8 @@ import {
   type ParticipationActor,
 } from '@standup/domain';
 
+import { inviteToEventChat } from './chat';
+
 const { scheduledNotifications: sn, participations, events, users } = schema;
 
 const NEW_APPLICATION_WINDOW_MS = 15 * 60_000;
@@ -258,6 +260,10 @@ export async function notifyTransition(
   }
   if (t.from === 'accepted' || p.status === 'accepted') {
     await rescheduleForParticipation(db, p.id, now);
+  }
+  // Попал в состав, а у события уже есть чат — приглашение туда.
+  if (p.status === 'accepted' && t.from !== 'accepted') {
+    await inviteToEventChat(db, t.event.id, [p.comedianId], now);
   }
 }
 

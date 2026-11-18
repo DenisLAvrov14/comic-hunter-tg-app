@@ -211,7 +211,11 @@ export async function countBadges(
   };
 }
 
-/** События организатора: предстоящие по возрастанию, прошедшие — по убыванию. */
+/**
+ * События организатора: предстоящие по возрастанию, прошедшие — по убыванию.
+ * Отменённые не показываются: для организатора «отменить» = удалить. Строка остаётся —
+ * у комиков в календаре и ICS отмена должна дойти.
+ */
 export function listOrganizerEvents(
   db: DbOrTx,
   organizerId: string,
@@ -223,6 +227,7 @@ export function listOrganizerEvents(
     .where(
       and(
         eq(events.organizerId, organizerId),
+        ne(events.status, 'cancelled'),
         upcoming
           ? sql`${events.windowEndsAt} >= ${ts(now)}`
           : sql`${events.windowEndsAt} < ${ts(now)}`,

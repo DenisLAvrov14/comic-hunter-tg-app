@@ -386,6 +386,9 @@ describe.skipIf(!TEST_DATABASE_URL)('API события и набор (Postgres)
 
     const cancelled = (await org.call('POST', `/events/${e.id}/cancel`)).json();
     expect(cancelled.status).toBe('cancelled');
+    // Для организатора отмена = удаление: в «Моих событиях» его больше нет.
+    const mine = (await org.call('GET', '/me/events')).json() as Array<{ id: string }>;
+    expect(mine.map((x) => x.id)).not.toContain(e.id);
     expect((await a.call('POST', `/events/${e.id}/applications`, {})).statusCode).toBe(409);
     expect((await a.call('POST', `/events/${e.id}/cancel`)).statusCode).toBe(403);
   });

@@ -37,7 +37,7 @@ import {
   useParticipationAction,
 } from '../events-ui';
 import { formatTime } from '../format';
-import { haptic, setVerticalSwipes } from '../telegram';
+import { haptic, openTelegramUrl, setVerticalSwipes } from '../telegram';
 import { BackButton, ErrorText, MissingText, Screen, TextField, useRequired } from '../ui';
 
 const t = ru.app;
@@ -724,7 +724,9 @@ function Tools({
     onSuccess: (e) => {
       haptic('success');
       void queryClient.invalidateQueries({ queryKey: ['events'] });
-      if (e.id !== event.id) navigate(`/events/${e.id}/manage`);
+      // Удалённое (отменённое) событие из списков пропадает — возвращаемся к ним.
+      if (e.status === 'cancelled') navigate('/my-events', { replace: true });
+      else if (e.id !== event.id) navigate(`/events/${e.id}/manage`);
       else queryClient.setQueryData(['event', event.id], e);
     },
   });
@@ -773,6 +775,10 @@ function Tools({
       {rights.organizer && active && event.status !== 'draft' && <Posts event={event} />}
 
       {rights.organizer && active && (
+        <EventChat event={event} botUsername={config.data?.botUsername ?? null} />
+      )}
+
+      {rights.organizer && active && (
         <button className="secondary" disabled={!link} onClick={() => link && copy('link', link)}>
           {copied === 'link' ? t.manage.copied : t.manage.copyLink}
         </button>
@@ -804,6 +810,41 @@ function Tools({
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Чат события: бот присылает организатору кнопку «Выбрать или создать группу» (/start chat_<id>),
+ * сам становится админом и рассылает участникам приглашения.
+ */
+function EventChat({ event, botUsername }: { event: EventDetails; botUsername: string | null }) {
+  const connect = botUsername ? `https://t.me/${botUsername}?start=chat_${event.id}` : null;
+  return (
+    <section className="card">
+      <h2>{t.manage.chat}</h2>
+      {event.chatLink ? (
+        <>
+          <span className="field-hint">{t.manage.chatConnectedHint}</span>
+          <div className="action-bar">
+            <button onClick={() => openTelegramUrl(event.chatLink!)}>{t.manage.chatOpen}</button>
+            <button
+              className="secondary"
+              disabled={!connect}
+              onClick={() => connect && openTelegramUrl(connect)}
+            >
+              {t.manage.chatReplace}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span className="field-hint">{t.manage.chatCreateHint}</span>
+          <button disabled={!connect} onClick={() => connect && openTelegramUrl(connect)}>
+            {t.manage.chatCreate}
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 

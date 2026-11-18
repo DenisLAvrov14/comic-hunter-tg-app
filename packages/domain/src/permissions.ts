@@ -100,3 +100,19 @@ export function defaultHostPermissions(): Record<HostPermissionFlag, boolean> {
     can_notify_lineup: false,
   };
 }
+
+/** Участие, с которым пускают в чат события: состав и резерв. */
+export const CHAT_PARTICIPATION_STATUSES = ['accepted', 'reserve'] as const;
+
+/** Видна ли ссылка на чат события: организатору, принявшему приглашение ведущему, составу и резерву. */
+export function seesEventChat(v: {
+  isOrganizer: boolean;
+  staffStatus: string | null;
+  participationStatus: string | null;
+}): boolean {
+  return (
+    v.isOrganizer ||
+    v.staffStatus === 'accepted' ||
+    (CHAT_PARTICIPATION_STATUSES as readonly string[]).includes(v.participationStatus ?? '')
+  );
+}

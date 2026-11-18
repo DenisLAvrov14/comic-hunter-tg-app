@@ -8,6 +8,7 @@ import { ComedianCardView } from '../comedian-card';
 import { formatDateTime, todayLocal } from '../format';
 import { haptic } from '../telegram';
 import { CitySelect, ErrorText, Screen, useCities } from '../ui';
+import { DateInput } from '../pickers';
 
 const t = ru.app;
 const m = t.map;
@@ -41,7 +42,7 @@ export function MapScreen() {
         />
         <label>
           {m.date}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={(v) => setDate(v)} />
         </label>
       </div>
       <p className="hint">{m.hint}</p>

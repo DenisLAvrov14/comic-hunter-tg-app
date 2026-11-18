@@ -193,6 +193,22 @@ describe.skipIf(!TEST_DATABASE_URL)('Календарь и автопринят�
       venueText: 'Другой зал',
     });
     expect(twice.statusCode).toBe(201);
+    // Своё выступление правится без пересоздания; чужое — не найти.
+    const edit = {
+      kind: 'manual_gig',
+      startsAtLocal: `${day}T17:00`,
+      endsAtLocal: `${day}T19:00`,
+      title: 'Квартирник',
+      venueText: 'Третий зал',
+    };
+    expect((await o.call('PUT', `/me/busy-slots/${twice.json().id}`, edit)).statusCode).toBe(404);
+    const edited = await z.call('PUT', `/me/busy-slots/${twice.json().id}`, edit);
+    expect(edited.json()).toMatchObject({
+      id: twice.json().id,
+      title: 'Квартирник',
+      venueText: 'Третий зал',
+      startsAt: at('17:00').toISOString(),
+    });
     expect((await z.call('DELETE', `/me/busy-slots/${twice.json().id}`)).statusCode).toBe(204);
 
     const cal = (

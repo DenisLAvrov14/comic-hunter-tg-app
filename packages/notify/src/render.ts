@@ -240,7 +240,8 @@ export async function renderNotification(
     n.kind === 'new_application' ||
     n.kind === 'event_cancelled' ||
     n.kind === 'event_changed' ||
-    n.kind === 'host_invitation'
+    n.kind === 'host_invitation' ||
+    n.kind === 'event_chat_invite'
   ) {
     const e = n.eventId ? await loadEvent(db, n.eventId) : undefined;
     if (!e) return { skip: 'no_event' };
@@ -273,6 +274,13 @@ export async function renderNotification(
       }
       case 'event_cancelled':
         return msg(t.eventCancelled(eventLine(e)));
+      case 'event_chat_invite':
+        if (ended(e.event) || e.event.status === 'cancelled') return { skip: 'event_ended' };
+        if (!e.event.chatInviteLink) return { skip: 'no_chat' };
+        return msg(t.chatInvite(eventLine(e)), [
+          [{ text: t.joinChat, url: e.event.chatInviteLink }],
+          open,
+        ]);
       case 'event_changed':
         if (ended(e.event)) return { skip: 'event_ended' };
         return msg(t.eventChanged(eventLine(e)), [open]);

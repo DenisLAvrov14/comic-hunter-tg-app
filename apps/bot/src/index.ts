@@ -5,8 +5,14 @@ import { createDb } from '@standup/db';
 import { createBot } from './bot';
 import { loadConfig } from './config';
 
-// my_chat_member — бота добавили в группу или канал (анонсы, SPEC §7.4).
-const ALLOWED_UPDATES = ['message', 'callback_query', 'my_chat_member'] as const;
+// my_chat_member — бота добавили в группу или канал (анонсы, SPEC §7.4);
+// chat_join_request — заявки на вступление в чат события.
+const ALLOWED_UPDATES = [
+  'message',
+  'callback_query',
+  'my_chat_member',
+  'chat_join_request',
+] as const;
 
 const config = loadConfig();
 const log = pino({ level: config.LOG_LEVEL, redact: ['token'] });

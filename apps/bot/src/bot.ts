@@ -1,8 +1,14 @@
-import { Bot, InlineKeyboard } from 'grammy';
+import { Bot, InlineKeyboard, Keyboard } from 'grammy';
+import type { ChatAdministratorRights } from 'grammy/types';
 import type { InlineKeyboardMarkup } from 'grammy/types';
 import type { Logger } from 'pino';
 import {
+  and,
   countParticipationsByEvent,
+  eq,
+  findEvent,
+  schema,
+  updateEvent,
   countPhotos,
   findCity,
   findComedianProfile,
@@ -17,7 +23,14 @@ import {
   upsertTelegramUser,
   type Db,
 } from '@standup/db';
-import { renderDigest, todayFor, type InlineButton } from '@standup/notify';
+import {
+  eventChatInvitees,
+  inviteToEventChat,
+  mayJoinEventChat,
+  renderDigest,
+  todayFor,
+  type InlineButton,
+} from '@standup/notify';
 import { ru } from '@standup/shared';
 import { apiRequestFor, callbackTarget, parseCallback } from './callbacks';
 import {
@@ -29,7 +42,7 @@ import {
   type SlotEvent,
 } from './commands';
 import type { BotConfig } from './config';
-import { isValidStartParam, miniAppDirectLink } from './links';
+import { isValidStartParam, miniAppDirectLink, parseChatStartParam } from './links';
 import { botCanPost, joined, type ChatMemberStatus } from './membership';
 
 function toMarkup(rows: InlineButton[][] = []): InlineKeyboardMarkup {
@@ -52,6 +65,9 @@ export function createBot(config: BotConfig, db: Db, log: Logger) {
     await upsertTelegramUser(db, ctx.from, { botStarted: true });
 
     const payload = ctx.match.trim();
+    const chatEventId = parseChatStartParam(payload);
+    if (chatEventId)
+      return askForEventChat(ctx.from.id, chatEventId, (text, extra) => ctx.reply(text, extra));
     const keyboard = new InlineKeyboard();
     // Параметр /start (переход на событие и т.п.) открываем через прямую ссылку,
     // т.к. web_app-кнопка не передаёт start_param.
@@ -65,6 +81,111 @@ export function createBot(config: BotConfig, db: Db, log: Logger) {
       ? t.start.greeting(ctx.from.first_name)
       : `${t.start.greeting(ctx.from.first_name)}\n\n${t.start.miniAppNotConfigured}`;
     await ctx.reply(text, { reply_markup: keyboard });
+  });
+
+  // --- Чат события ---
+
+  /** Права бота в чате события: только приглашать (и одобрять заявки). */
+  const chatRights: ChatAdministratorRights = {
+    is_anonymous: false,
+    can_manage_chat: true,
+    can_delete_messages: false,
+    can_manage_video_chats: false,
+    can_restrict_members: false,
+    can_promote_members: false,
+    can_change_info: false,
+    can_invite_users: true,
+    can_post_stories: false,
+    can_edit_stories: false,
+    can_delete_stories: false,
+    can_send_welcome_messages: false,
+  };
+
+  /** Организатор нажал «Создать чат события» — присылаем кнопку выбора/создания группы. */
+  async function askForEventChat(
+    telegramId: number,
+    eventId: string,
+    reply: (text: string, extra?: Parameters<typeof bot.api.sendMessage>[2]) => Promise<unknown>,
+  ) {
+    const user = await findUserByTelegramId(db, telegramId);
+    const event = await findEvent(db, eventId);
+    if (!user || !event || event.organizerId !== user.id) return reply(t.chat.notYours);
+    if (event.status === 'cancelled' || event.status === 'finished') return reply(t.chat.closed);
+    // request_id — int32; по нему находим событие, когда Telegram вернёт выбранную группу.
+    const requestId = 1 + Math.floor(Math.random() * 2_000_000_000);
+    await updateEvent(db, event.id, { chatRequestId: requestId });
+    const keyboard = new Keyboard()
+      .requestChat(t.chat.pickButton, requestId, {
+        chat_is_channel: false,
+        bot_is_member: true,
+        bot_administrator_rights: chatRights,
+        user_administrator_rights: chatRights,
+        request_title: true,
+      })
+      .resized()
+      .oneTime();
+    return reply(t.chat.pick(event.title), { reply_markup: keyboard });
+  }
+
+  bot.on('message:chat_shared', async (ctx) => {
+    const shared = ctx.message.chat_shared;
+    const user = await findUserByTelegramId(db, ctx.from.id);
+    const [event] = await db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.chatRequestId, shared.request_id));
+    const done = { reply_markup: { remove_keyboard: true as const } };
+    if (!user || !event || event.organizerId !== user.id) return ctx.reply(t.chat.expired, done);
+    let link: string;
+    let title = shared.title ?? '';
+    let type = 'supergroup';
+    try {
+      const chat = await ctx.api.getChat(shared.chat_id);
+      title = ('title' in chat && chat.title) || title;
+      type = chat.type;
+      link = (
+        await ctx.api.createChatInviteLink(shared.chat_id, {
+          name: t.chat.linkName,
+          creates_join_request: true,
+        })
+      ).invite_link;
+    } catch (err) {
+      log.warn({ err, eventId: event.id }, 'event chat invite link failed');
+      return ctx.reply(t.chat.failed, done);
+    }
+    const now = new Date();
+    const invitees = await db.transaction(async (tx) => {
+      const [chat] = await tx
+        .insert(schema.telegramChats)
+        .values({ telegramChatId: shared.chat_id, title, type, addedBy: user.id, botCanPost: true })
+        .onConflictDoUpdate({
+          target: schema.telegramChats.telegramChatId,
+          set: { title, type },
+        })
+        .returning();
+      await tx
+        .update(schema.events)
+        .set({ chatId: chat!.id, chatInviteLink: link, chatRequestId: null })
+        .where(and(eq(schema.events.id, event.id)));
+      const ids = await eventChatInvitees(tx, event.id);
+      await inviteToEventChat(tx, event.id, ids, now);
+      return ids.length;
+    });
+    log.info({ eventId: event.id, invitees }, 'event chat connected');
+    await ctx.reply(t.chat.connected(title, invitees), done);
+  });
+
+  // Заявка на вступление по ссылке чата события: пускаем только участников.
+  bot.on('chat_join_request', async (ctx) => {
+    const req = ctx.chatJoinRequest;
+    const user = await findUserByTelegramId(db, req.from.id);
+    const ok = !!user && (await mayJoinEventChat(db, req.chat.id, user.id));
+    try {
+      if (ok) await ctx.approveChatJoinRequest(req.from.id);
+      else await ctx.declineChatJoinRequest(req.from.id);
+    } catch (err) {
+      log.warn({ err, chatId: req.chat.id }, 'chat join request answer failed');
+    }
   });
 
   /** Действие пользователя через API (те же проверки прав, что и в Mini App). */

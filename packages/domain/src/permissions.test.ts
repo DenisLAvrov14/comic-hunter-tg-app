@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   can,
+  seesEventChat,
   defaultHostPermissions,
   eventActions,
   hostPermissionFlags,
@@ -175,5 +176,22 @@ describe('can: комик', () => {
         can(COMIC, 'invitation.respond', { event: event(), participation: { status: 'pending' } }),
       ).toBe(false);
     });
+  });
+});
+
+describe('seesEventChat', () => {
+  const none = { isOrganizer: false, staffStatus: null, participationStatus: null };
+  it('организатор, ведущий, состав и резерв — видят', () => {
+    expect(seesEventChat({ ...none, isOrganizer: true })).toBe(true);
+    expect(seesEventChat({ ...none, staffStatus: 'accepted' })).toBe(true);
+    expect(seesEventChat({ ...none, participationStatus: 'accepted' })).toBe(true);
+    expect(seesEventChat({ ...none, participationStatus: 'reserve' })).toBe(true);
+  });
+  it('заявка, приглашение, отказ и посторонний — нет', () => {
+    expect(seesEventChat(none)).toBe(false);
+    expect(seesEventChat({ ...none, staffStatus: 'invited' })).toBe(false);
+    for (const s of ['pending', 'invited', 'withdrawn', 'removed', 'rejected']) {
+      expect(seesEventChat({ ...none, participationStatus: s })).toBe(false);
+    }
   });
 });

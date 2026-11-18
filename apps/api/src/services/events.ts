@@ -18,6 +18,7 @@ import {
 } from '@standup/db';
 import {
   can,
+  seesEventChat,
   computeSlotWindows,
   eventWindow,
   expand,
@@ -167,6 +168,13 @@ export async function loadEventDetails(
         : null,
     },
     linkToken: isOrganizer ? row.event.recruitmentLinkToken : null,
+    chatLink: seesEventChat({
+      isOrganizer,
+      staffStatus: resource.hostStatus,
+      participationStatus: resource.participationRow?.status ?? null,
+    })
+      ? row.event.chatInviteLink
+      : null,
     lineup,
   };
 }

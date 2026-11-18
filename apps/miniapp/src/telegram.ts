@@ -107,7 +107,11 @@ export function openExternal(url: string) {
 
 /** Профиль человека в Telegram (t.me/username): внутри Telegram — без закрытия Mini App. */
 export function openTelegramProfile(username: string) {
-  const url = `https://t.me/${encodeURIComponent(username)}`;
+  openTelegramUrl(`https://t.me/${encodeURIComponent(username)}`);
+}
+
+/** Ссылка t.me (чат, бот): внутри Telegram открывается самим клиентом. */
+export function openTelegramUrl(url: string) {
   if (inTelegram && openTelegramLink.isAvailable()) {
     try {
       openTelegramLink(url);

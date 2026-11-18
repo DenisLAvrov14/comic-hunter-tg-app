@@ -156,6 +156,8 @@ export const EventDetails = EventSummary.extend({
   }),
   /** Токен ссылки набора — только организатору. */
   linkToken: z.string().nullable(),
+  /** Ссылка на чат события в Telegram — организатору, ведущим, составу и резерву. */
+  chatLink: z.string().nullable(),
   /** Состав в порядке выхода, если организатор разрешил показывать. */
   lineup: z.array(z.object({ position: z.number().int(), stageName: z.string() })).nullable(),
 });

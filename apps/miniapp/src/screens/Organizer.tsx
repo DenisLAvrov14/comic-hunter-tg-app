@@ -27,6 +27,7 @@ import {
   useCities,
   useRequired,
 } from '../ui';
+import { DateInput, TimeInput } from '../pickers';
 import type { SavedNotice } from './Lineup';
 import { Select } from '../select';
 
@@ -282,15 +283,11 @@ function EventForm({ event }: { event?: EventDetails }) {
         <div className="fields">
           <label className={required.isMissing(f.date) ? 'invalid' : undefined}>
             {t.eventForm.date}
-            <input type="date" value={d.date} onChange={(e) => set('date', e.target.value)} />
+            <DateInput value={d.date} onChange={(v) => set('date', v)} />
           </label>
           <label className={required.isMissing(f.startTime) ? 'invalid' : undefined}>
             {t.eventForm.startTime}
-            <input
-              type="time"
-              value={d.startTime}
-              onChange={(e) => set('startTime', e.target.value)}
-            />
+            <TimeInput value={d.startTime} onChange={(v) => set('startTime', v)} />
           </label>
         </div>
         {venue && <span className="field-hint">{t.eventForm.timezoneHint(venue.timezone)}</span>}
@@ -406,7 +403,7 @@ export function ComediansScreen() {
       <div className="fields">
         <label>
           {t.comedians.date}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={(v) => setDate(v)} />
         </label>
       </div>
       <p className="hint">{t.comedians.hint}</p>

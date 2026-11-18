@@ -19,7 +19,7 @@ import {
   useParticipationAction,
 } from '../events-ui';
 import { formatDateTime } from '../format';
-import { haptic } from '../telegram';
+import { haptic, openTelegramUrl } from '../telegram';
 import {
   BackButton,
   CitySelect,
@@ -31,6 +31,7 @@ import {
   useCities,
   useRequired,
 } from '../ui';
+import { DateInput } from '../pickers';
 import { Select } from '../select';
 
 const t = ru.app;
@@ -78,7 +79,7 @@ export function OpenEventsScreen() {
         </label>
         <label>
           {t.events.fromDate}
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <DateInput value={from} onChange={(v) => setFrom(v)} />
         </label>
       </div>
       {isPending ? (
@@ -230,6 +231,11 @@ function EventBody({
         )}
       </section>
 
+      {event.chatLink && !event.viewer.isOrganizer && (
+        <button className="secondary" onClick={() => openTelegramUrl(event.chatLink!)}>
+          {t.events.chat}
+        </button>
+      )}
       {event.viewer.isOrganizer && (
         <Link className="button-link" to={`/events/${event.id}/manage`}>
           {t.events.manage}

@@ -202,6 +202,8 @@ export const api = {
   calendar: (from: string, to: string) =>
     request<CalendarResponse>('GET', `/me/calendar?${query({ from, to })}`),
   addBusy: (body: BusySlotInput) => request<CalendarBusy>('POST', '/me/busy-slots', body),
+  updateBusy: (id: string, body: BusySlotInput) =>
+    request<CalendarBusy>('PUT', `/me/busy-slots/${id}`, body),
   deleteBusy: (id: string) => request<void>('DELETE', `/me/busy-slots/${id}`),
   rules: () => request<AutoAcceptRule[]>('GET', '/me/auto-accept-rules'),
   putRule: (organizerId: string, body: AutoAcceptRuleInput) =>

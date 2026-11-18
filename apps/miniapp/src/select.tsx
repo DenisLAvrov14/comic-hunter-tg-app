@@ -155,7 +155,7 @@ function DesktopSelect({
       }
     };
     const onMove = (e: Event) => {
-      if (!popoverRef.current?.contains(e.target as Node)) place();
+      if (!(e.target instanceof Node && popoverRef.current?.contains(e.target))) place();
     };
     document.addEventListener('mousedown', onDown);
     window.addEventListener('scroll', onMove, true);

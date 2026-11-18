@@ -43,6 +43,7 @@ import {
 } from '@standup/shared';
 import {
   enqueueNow,
+  inviteToEventChat,
   notifyDayConfirmation,
   notifyPositionChanges,
   rescheduleForEvent,
@@ -320,6 +321,7 @@ export const lineupRoutes: FastifyPluginAsync<{
     const { value } = HostingAnswerRequest.parse(req.body);
     const row = await setStaffStatus(db, id, req.user.sub, value);
     if (!row) throw new ApiError('NOT_FOUND');
+    if (row.status === 'accepted') await inviteToEventChat(db, id, [req.user.sub], new Date());
     return { status: row.status };
   });
 

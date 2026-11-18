@@ -10,6 +10,7 @@ import { api } from '../api';
 import { useMe } from '../auth';
 import { askWriteAccess, haptic, openExternal } from '../telegram';
 import { BackButton, ErrorText, MainButton, Screen, TextField } from '../ui';
+import { TimeInput } from '../pickers';
 import { Select } from '../select';
 
 const t = ru.app;
@@ -56,7 +57,7 @@ export function SettingsScreen() {
       <section className="card">
         <label>
           {s.digestTime}
-          <input type="time" value={digestTime} onChange={(e) => setDigestTime(e.target.value)} />
+          <TimeInput value={digestTime} onChange={(v) => setDigestTime(v)} />
           <span className="field-hint">{s.digestHint}</span>
         </label>
         <label>
@@ -234,19 +235,11 @@ function RuleEditor({
           <div className="fields">
             <label>
               {r.timeFrom}
-              <input
-                type="time"
-                value={d.timeFrom}
-                onChange={(e) => setD({ ...d, timeFrom: e.target.value })}
-              />
+              <TimeInput value={d.timeFrom} onChange={(v) => setD({ ...d, timeFrom: v })} />
             </label>
             <label>
               {r.timeTo}
-              <input
-                type="time"
-                value={d.timeTo}
-                onChange={(e) => setD({ ...d, timeTo: e.target.value })}
-              />
+              <TimeInput value={d.timeTo} onChange={(v) => setD({ ...d, timeTo: v })} />
             </label>
           </div>
           <TextField

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidStartParam, miniAppDirectLink } from './links';
+import { isValidStartParam, parseChatStartParam, miniAppDirectLink } from './links';
 
 describe('miniAppDirectLink', () => {
   it('строит ссылку со startapp', () => {
@@ -25,5 +25,18 @@ describe('isValidStartParam', () => {
 
   it.each(['', 'x_1', 'e_', 'e_<script>', `e_${'a'.repeat(65)}`])('отклоняет %s', (v) => {
     expect(isValidStartParam(v)).toBe(false);
+  });
+});
+
+describe('parseChatStartParam', () => {
+  it('chat_<uuid> — id события', () => {
+    expect(parseChatStartParam('chat_0B9A3C1E-1234-4abc-8def-0123456789ab')).toBe(
+      '0b9a3c1e-1234-4abc-8def-0123456789ab',
+    );
+  });
+  it('остальное — нет', () => {
+    expect(parseChatStartParam('e_0b9a3c1e-1234-4abc-8def-0123456789ab')).toBeNull();
+    expect(parseChatStartParam('chat_123')).toBeNull();
+    expect(parseChatStartParam('')).toBeNull();
   });
 });

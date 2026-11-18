@@ -134,6 +134,13 @@
       "when": 1795004698522,
       "tag": "0018_gifted_banshee",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795021054889,
+      "tag": "0019_flawless_nova",
+      "breakpoints": true
     }
   ]
 }

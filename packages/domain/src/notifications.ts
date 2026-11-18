@@ -31,6 +31,7 @@ export const notificationKinds = [
   'venue_approved',
   'venue_rejected',
   'admin_granted',
+  'event_chat_invite',
 ] as const;
 export type NotificationKind = (typeof notificationKinds)[number];
 
