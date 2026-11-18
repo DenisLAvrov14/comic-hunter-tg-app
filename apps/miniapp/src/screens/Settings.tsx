@@ -8,7 +8,7 @@ import {
 } from '@standup/shared';
 import { api } from '../api';
 import { useMe } from '../auth';
-import { askWriteAccess, haptic, openExternal } from '../telegram';
+import { askWriteAccess, haptic, openExternal, withConfirm } from '../telegram';
 import { BackButton, ErrorText, MainButton, Screen, TextField } from '../ui';
 import { TimeInput } from '../pickers';
 import { Select } from '../select';
@@ -303,7 +303,7 @@ function FeedSection() {
           <button
             className="danger"
             onClick={() => {
-              if (window.confirm(f.rotateConfirm)) rotate.mutate();
+              withConfirm(f.rotateConfirm, () => rotate.mutate(), { title: f.rotate });
             }}
           >
             {f.rotate}

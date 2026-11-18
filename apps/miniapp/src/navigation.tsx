@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ru, userRoles, type Badges, type UserRole } from '@standup/shared';
 import { api, setToken } from './api';
 import { useMe } from './auth';
-import { haptic } from './telegram';
+import { haptic, withConfirm } from './telegram';
 import { ErrorText, Screen } from './ui';
 
 const t = ru.app;
@@ -266,7 +266,10 @@ export function MoreScreen() {
           className="danger"
           disabled={remove.isPending}
           onClick={() => {
-            if (window.confirm(t.account.deleteConfirm)) remove.mutate();
+            withConfirm(t.account.deleteConfirm, () => remove.mutate(), {
+              title: t.account.delete,
+              ok: t.confirm.delete,
+            });
           }}
         >
           {t.account.delete}

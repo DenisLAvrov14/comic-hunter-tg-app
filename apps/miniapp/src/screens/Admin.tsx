@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ru, type AdminPerson, type PendingVenue } from '@standup/shared';
 import { api } from '../api';
 import { useMe } from '../auth';
-import { haptic, openTelegramProfile } from '../telegram';
+import { haptic, openTelegramProfile, withConfirm } from '../telegram';
 import { BackButton, ErrorText, Screen, TextField } from '../ui';
 import { ContactLink, VenueCard } from '../venue-card';
 
@@ -188,7 +188,8 @@ function Admins() {
     onError: () => haptic('error'),
   });
   const run = (id: string, action: keyof typeof actions, confirm?: string) => {
-    if (!confirm || window.confirm(confirm)) change.mutate({ id, action });
+    if (!confirm) change.mutate({ id, action });
+    else withConfirm(confirm, () => change.mutate({ id, action }));
   };
 
   return (

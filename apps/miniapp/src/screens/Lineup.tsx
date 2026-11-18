@@ -37,7 +37,7 @@ import {
   useParticipationAction,
 } from '../events-ui';
 import { formatTime } from '../format';
-import { haptic, openTelegramUrl, setVerticalSwipes } from '../telegram';
+import { haptic, openTelegramUrl, setVerticalSwipes, withConfirm } from '../telegram';
 import { BackButton, ErrorText, MissingText, Screen, TextField, useRequired } from '../ui';
 
 const t = ru.app;
@@ -191,7 +191,9 @@ function LineupBody({
         </>
       )}
 
-      <Tools event={event} lineup={lineup} rights={rights} active={active} />
+      {rights.organizer && lineup && <Hosts event={event} staff={lineup.staff} />}
+
+      <Tools event={event} rights={rights} active={active} />
     </>
   );
 }
@@ -679,16 +681,14 @@ function Replacement({
   );
 }
 
-// --- Афиша, рассылка, ведущие, ссылка ---
+// --- Афиша, рассылка, чаты, ссылка ---
 
 function Tools({
   event,
-  lineup,
   rights,
   active,
 }: {
   event: EventDetails;
-  lineup: Lineup | undefined;
   rights: Rights;
   active: boolean;
 }) {
@@ -770,8 +770,6 @@ function Tools({
         </section>
       )}
 
-      {rights.organizer && lineup && <Hosts event={event} staff={lineup.staff} />}
-
       {rights.organizer && active && event.status !== 'draft' && <Posts event={event} />}
 
       {rights.organizer && active && (
@@ -779,9 +777,12 @@ function Tools({
       )}
 
       {rights.organizer && active && (
-        <button className="secondary" disabled={!link} onClick={() => link && copy('link', link)}>
-          {copied === 'link' ? t.manage.copied : t.manage.copyLink}
-        </button>
+        <div className="stack">
+          <button className="secondary" disabled={!link} onClick={() => link && copy('link', link)}>
+            {copied === 'link' ? t.manage.copied : t.manage.copyLink}
+          </button>
+          <span className="field-hint">{t.manage.copyLinkHint}</span>
+        </div>
       )}
 
       {rights.organizer && (
@@ -798,9 +799,11 @@ function Tools({
               <button
                 className="danger"
                 onClick={() => {
-                  if (window.confirm(t.manage.cancelConfirm)) {
-                    eventMutation.mutate(() => api.cancelEvent(event.id));
-                  }
+                  withConfirm(
+                    t.manage.cancelConfirm,
+                    () => eventMutation.mutate(() => api.cancelEvent(event.id)),
+                    { title: t.manage.cancel, ok: t.confirm.delete },
+                  );
                 }}
               >
                 {t.manage.cancel}

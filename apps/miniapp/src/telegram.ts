@@ -7,6 +7,7 @@ import {
   miniApp,
   openLink,
   openTelegramLink,
+  popup,
   requestWriteAccess,
   retrieveLaunchParams,
   retrieveRawInitData,
@@ -14,6 +15,7 @@ import {
   themeParams,
   viewport,
 } from '@telegram-apps/sdk-react';
+import { ru } from '@standup/shared';
 
 export interface TelegramEnv {
   inTelegram: boolean;
@@ -121,6 +123,45 @@ export function openTelegramUrl(url: string) {
     }
   }
   window.open(url, '_blank', 'noopener');
+}
+
+/**
+ * Подтверждение действия. В Telegram — родное окно с заголовком и кнопками «Отмена» и `ok`;
+ * window.confirm показывал вместо заголовка адрес сайта. Вне Telegram — window.confirm.
+ */
+export async function confirmAction(
+  message: string,
+  opts: { title?: string; ok?: string; destructive?: boolean } = {},
+): Promise<boolean> {
+  if (inTelegram && popup.open.isAvailable()) {
+    try {
+      const id = await popup.open({
+        title: opts.title?.slice(0, 64),
+        message: message.slice(0, 256),
+        buttons: [
+          { id: 'cancel', type: 'cancel' },
+          {
+            id: 'ok',
+            type: opts.destructive === false ? 'default' : 'destructive',
+            text: opts.ok ?? ru.app.confirm.ok,
+          },
+        ],
+      });
+      return id === 'ok';
+    } catch {
+      // Окно не открылось — спросим обычным способом.
+    }
+  }
+  return window.confirm(message);
+}
+
+/** Выполнить действие после подтверждения. */
+export function withConfirm(
+  message: string,
+  action: () => void,
+  opts?: Parameters<typeof confirmAction>[1],
+) {
+  void confirmAction(message, opts).then((ok) => ok && action());
 }
 
 export function haptic(kind: 'light' | 'success' | 'error' = 'light') {

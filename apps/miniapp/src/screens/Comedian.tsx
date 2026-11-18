@@ -19,7 +19,7 @@ import {
   useParticipationAction,
 } from '../events-ui';
 import { formatDateTime } from '../format';
-import { haptic, openTelegramUrl } from '../telegram';
+import { haptic, openTelegramUrl, withConfirm } from '../telegram';
 import {
   BackButton,
   CitySelect,
@@ -203,7 +203,10 @@ function EventBody({
               className="danger"
               disabled={action.busy !== null}
               onClick={() => {
-                if (window.confirm(t.events.withdrawConfirm)) void action.run(mine.id, 'withdraw');
+                withConfirm(t.events.withdrawConfirm, () => void action.run(mine.id, 'withdraw'), {
+                  title: t.events.withdraw,
+                  ok: t.events.withdraw,
+                });
               }}
             >
               {t.events.withdraw}

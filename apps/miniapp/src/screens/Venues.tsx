@@ -14,7 +14,7 @@ import {
 import { api } from '../api';
 import { useMe } from '../auth';
 import { useActiveRole } from '../navigation';
-import { haptic } from '../telegram';
+import { haptic, withConfirm } from '../telegram';
 import {
   BackButton,
   CitySelect,
@@ -274,7 +274,9 @@ function OwnVenueCard({
       details={details}
       gallery={{
         onRemove: (photoId) => {
-          if (window.confirm(v.removePhotoConfirm)) removePhoto.mutate(photoId);
+          withConfirm(v.removePhotoConfirm, () => removePhoto.mutate(photoId), {
+            ok: ru.app.confirm.delete,
+          });
         },
         add: <AddPhotoCell venue={venue} cityId={cityId} />,
       }}
@@ -673,9 +675,11 @@ function OwnerAssign({ venue, cityId }: { venue: VenueListItem; cityId: number }
                     className="secondary"
                     disabled={assign.isPending}
                     onClick={() => {
-                      if (window.confirm(v.ownerConfirm(personName(p), venue.name))) {
-                        assign.mutate(p);
-                      }
+                      withConfirm(
+                        v.ownerConfirm(personName(p), venue.name),
+                        () => assign.mutate(p),
+                        { destructive: false },
+                      );
                     }}
                   >
                     {t.admin.grant}

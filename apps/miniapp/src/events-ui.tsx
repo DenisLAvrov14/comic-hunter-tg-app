@@ -10,7 +10,7 @@ import {
 } from '@standup/shared';
 import { api, ApiRequestError } from './api';
 import { formatDateTime, formatRange } from './format';
-import { haptic } from './telegram';
+import { haptic, withConfirm } from './telegram';
 import { ErrorText } from './ui';
 
 const t = ru.app;
@@ -41,8 +41,11 @@ export function HostAnswer({ eventId, status }: { eventId: string; status: Staff
           className="danger"
           disabled={answer.isPending}
           onClick={() => {
-            if (status === 'invited' || window.confirm(t.hosting.declineConfirm))
-              answer.mutate('declined');
+            if (status === 'invited') answer.mutate('declined');
+            else
+              withConfirm(t.hosting.declineConfirm, () => answer.mutate('declined'), {
+                ok: t.hosting.decline,
+              });
           }}
         >
           {t.hosting.decline}
